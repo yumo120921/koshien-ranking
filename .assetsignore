@@ -1,3 +1,6 @@
 README.md
 prototype.html
 wrangler.jsonc
+app_template.html
+build.py
+data/

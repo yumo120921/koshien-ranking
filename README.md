@@ -1,42 +1,39 @@
 # 埼玉高校野球 通算ランキング
 
-埼玉県の高校野球の戦績データベースサイト。
+埼玉県の高校野球(夏の埼玉大会)の戦績データベースサイト。
+公開URL: https://koshien-ranking.com (Cloudflare Workers、pushで自動デプロイ)
+
+## データの更新方法
+
+1. `data/results.csv` を編集する(Excel/メモ帳可。UTF-8で保存すること)
+   - 列: `年,ブロック,優勝,準優勝,ベスト4,ベスト4,ベスト8,ベスト8,ベスト8,ベスト8,決勝勝者得点,決勝敗者得点`
+   - ブロック列は通常空欄。ブロック制の年のみ `A`/`B`/`東`/`西`/`南`/`北` を入れる
+2. 準々決勝以降のスコア詳細は `data/scores.json` を編集する(キーは `"年|ブロック"`)
+3. ビルドを実行: `python build.py`
+   - index.html(アプリ)へのデータ注入、学校別・年度別ページ、sitemap.xml がすべて再生成される
+4. 反映: `git add -A` → `git commit -m "データ更新"` → `git push`
 
 ## ファイル構成
 
-| ファイル | 内容 |
-|---|---|
-| `index.html` | サイト本体(prototype.htmlにメタ情報とフッターを追加したもの) |
-| `prototype.html` | 原本(公開対象外にしてもよい) |
-| `about.html` | サイトについて(運営者情報) |
-| `privacy.html` | プライバシーポリシー(AdSense審査に必須) |
-| `disclaimer.html` | 免責事項 |
-| `contact.html` | お問い合わせ(※Googleフォームの URL 差し替えが必要) |
-| `robots.txt` / `sitemap.xml` | 検索エンジン向け(※ドメイン取得後に URL 差し替えが必要) |
+| パス | 内容 | 手で編集する? |
+|---|---|---|
+| `data/results.csv` | 年度別成績(データの原本) | **する** |
+| `data/scores.json` | 準々決勝以降のスコア詳細(データの原本) | **する** |
+| `build.py` | サイト生成スクリプト | 機能追加時のみ |
+| `app_template.html` | アプリのテンプレート(データ部はプレースホルダ) | しない |
+| `index.html` | アプリ本体 | **しない(build.pyが生成)** |
+| `schools/` `years/` `sitemap.xml` | 学校別・年度別ページ | **しない(build.pyが生成)** |
+| `about.html` ほか固定ページ | サイト情報・ポリシー類 | 必要に応じて |
+| `prototype.html` | 初期の原本(保存用、配信されない) | しない |
+| `.assetsignore` | 配信対象から除外するファイルの一覧 | 必要に応じて |
+| `wrangler.jsonc` | Cloudflare Workers設定 | しない |
 
-## 公開手順(残りの作業)
+## 公開・収益化の進捗
 
-### 1. GitHubアカウントの作成とプッシュ
-1. https://github.com/ でアカウント作成
-2. 新規リポジトリ作成(例: `saitama-hsbb`、Public)
-3. このフォルダで以下を実行:
-   ```
-   git remote add origin https://github.com/<ユーザー名>/saitama-hsbb.git
-   git push -u origin main
-   ```
-   (初回プッシュ時にブラウザでGitHubログインを求められます)
-
-### 2. Cloudflare Pagesで公開
-1. https://dash.cloudflare.com/ でアカウント作成
-2. Workers & Pages → Create → Pages → Connect to Git
-3. 上記リポジトリを選択、ビルド設定はすべて空欄のまま(静的サイトのため)→ Deploy
-4. `https://<プロジェクト名>.pages.dev` で公開される
-
-### 3. 独自ドメイン(AdSense申請に必須)
-1. Cloudflare Registrar 等でドメイン取得(年1,000〜2,000円程度)
-2. Pagesプロジェクト → Custom domains → ドメインを接続
-3. `robots.txt` と `sitemap.xml` の `REPLACE-WITH-YOUR-DOMAIN` を実際のドメインに差し替えてプッシュ
-
-### 4. 公開後すぐやること
-- Googleフォームでお問い合わせフォームを作成し、`contact.html` のリンクを差し替え
-- Google Search Console にサイトを登録し、sitemap.xml を送信
+- [x] Cloudflare Workersで公開(2026-07)
+- [x] 独自ドメイン koshien-ranking.com 接続
+- [x] Google Search Console登録・sitemap送信
+- [x] プライバシーポリシー等のAdSense必須ページ
+- [x] 学校別(106校)・年度別(77年)の静的ページ生成
+- [ ] Google AdSense申請
+- [ ] 合格後: ads.txt設置、広告ユニット配置
