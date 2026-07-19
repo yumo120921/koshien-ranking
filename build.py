@@ -30,7 +30,8 @@ SITE_NAME = "高校野球 通算ランキング"
 # ---------------- 都道府県定義 (slug, 表示名, タイル列, タイル行) ----------------
 
 PREFS = [
-    ("hokkaido", "北海道", 13, 1),
+    # 北海道は北北海道・南北海道に分割して別「都道府県」として扱う
+    ("minamihokkaido", "南北海道", 12, 1), ("kitahokkaido", "北北海道", 13, 1),
     ("aomori", "青森", 13, 2), ("akita", "秋田", 12, 3), ("iwate", "岩手", 13, 3),
     ("yamagata", "山形", 12, 4), ("miyagi", "宮城", 13, 4),
     ("niigata", "新潟", 12, 5), ("fukushima", "福島", 13, 5),
@@ -52,7 +53,8 @@ PREFS = [
     ("tottori", "鳥取", 5, 7), ("shimane", "島根", 4, 7),
     ("okinawa", "沖縄", 1, 11),
 ]
-assert len(PREFS) == 47, f"都道府県は47のはず: {len(PREFS)}"
+assert len(PREFS) == 48, f"都道府県(北海道は南北分割)は48のはず: {len(PREFS)}"
+assert len({(c, r) for _, _, c, r in PREFS}) == 48, "地図タイルの座標が重複"
 PREF_NAME = {slug: name for slug, name, _, _ in PREFS}
 
 # ---------------- データ読み込み ----------------
@@ -121,6 +123,37 @@ def load_aliases(path):
                 continue
             out.append({"from": cells[0], "to": cells[1]})
     return out
+
+DEFAULT_SOURCES = "出典: 各大会の公式記録・トーナメント表に基づき運営者が集計 / 点差係数の設計参考: World Football Elo Ratings(eloratings.net方式)"
+
+def load_sources(path):
+    """sources.txt(出典表記の1行テキスト)。無ければ既定文"""
+    if not os.path.exists(path):
+        return DEFAULT_SOURCES
+    return open(path, encoding="utf-8").read().strip()
+
+def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base):
+    """app_template.html にデータと文言を注入して対話型アプリのHTMLを返す"""
+    params = load_config(os.path.join(datadir, "config.csv"))
+    aliases = load_aliases(os.path.join(datadir, "aliases.csv"))
+    sources = load_sources(os.path.join(datadir, "sources.txt"))
+    tpl = open(os.path.join(ROOT, "app_template.html"), encoding="utf-8").read()
+    for ph in ("__IH_CSV__", "__TH_JSON__", "__PARAMS_JSON__", "__ALIASES_JSON__",
+               "__APP_TITLE__", "__APP_DESC__", "__APP_SCOPE__", "__APP_SOURCES__"):
+        assert ph in tpl, f"テンプレートにプレースホルダがありません: {ph}"
+    for bad in ("`", "${"):
+        assert bad not in rows_text, f"CSVに使用できない文字: {bad}"
+    app = (tpl
+           .replace("__IH_CSV__", rows_text)
+           .replace("__TH_JSON__", json.dumps(scores, ensure_ascii=False, separators=(",", ":")))
+           .replace("__PARAMS_JSON__", json.dumps(params, ensure_ascii=False, separators=(",", ":")))
+           .replace("__ALIASES_JSON__", json.dumps(aliases, ensure_ascii=False, separators=(",", ":")))
+           .replace("__APP_TITLE__", title)
+           .replace("__APP_DESC__", desc)
+           .replace("__APP_SCOPE__", scope)
+           .replace("__APP_SOURCES__", sources)
+           .replace("__PREF_BASE__", pref_base))
+    return app
 
 def active_prefs():
     """data/<slug>/results.csv が存在する都道府県の一覧"""
@@ -254,20 +287,13 @@ def build_pref(slug):
     os.makedirs(os.path.join(outbase, "schools"))
     os.makedirs(os.path.join(outbase, "years"))
 
-    params = load_config(os.path.join(ROOT, "data", slug, "config.csv"))
-    aliases = load_aliases(os.path.join(ROOT, "data", slug, "aliases.csv"))
-
     # --- アプリ本体(index.html) ---
-    tpl = open(os.path.join(ROOT, "app_template.html"), encoding="utf-8").read()
-    for ph in ("__IH_CSV__", "__TH_JSON__", "__PARAMS_JSON__", "__ALIASES_JSON__"):
-        assert ph in tpl, f"テンプレートにプレースホルダがありません: {ph}"
-    for bad in ("`", "${"):
-        assert bad not in rows_text, f"CSVに使用できない文字: {bad}"
-    th_js = json.dumps(scores, ensure_ascii=False, separators=(",", ":"))
-    app = tpl.replace("__IH_CSV__", rows_text).replace("__TH_JSON__", th_js)
-    app = app.replace("__PARAMS_JSON__", json.dumps(params, ensure_ascii=False, separators=(",", ":")))
-    app = app.replace("__ALIASES_JSON__", json.dumps(aliases, ensure_ascii=False, separators=(",", ":")))
-    app = app.replace("__PREF_BASE__", base)
+    app = render_app(
+        os.path.join(ROOT, "data", slug), rows_text, scores,
+        title=f"{name}高校野球 通算ランキング",
+        desc=f"{name}の高校野球の戦績データベース。学校別の通算成績ランキングや年度別のトーナメント結果をまとめています。",
+        scope=f"夏の{name}大会",
+        pref_base=base)
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
@@ -410,74 +436,89 @@ def split_pref(name):
     m = re.match(r"^(.*?)(?:[((](.*?)[))])?$", name)
     return (m.group(1), m.group(2) or "")
 
-def koshien_section():
-    path = os.path.join(ROOT, "data", "koshien.csv")
-    if not os.path.exists(path):
-        return ('<div class="notice">甲子園(春・夏)の通算ランキングは現在データを準備中です。'
-                '公開までしばらくお待ちください。</div>'), False
-    rows = parse_results_csv(path)
-    # 「大会」列は block フィールドに入る(春/夏)
-    # 学校名は「校名(都道府県)」形式。都道府県表記は大会・年により変わる
-    # (例: 大阪桐蔭(大阪)と(北大阪))ため、校名で名寄せして最新の表記を採用する
-    pref_map = {}
-    def strip(name):
-        school, pref = split_pref(name)
-        if school and pref:
-            pref_map[school] = pref
-        return school
-    for r in rows:
-        r["ch"] = strip(r["ch"])
-        r["ru"] = strip(r["ru"])
-        r["b4"] = [strip(s) for s in r["b4"]]
-        r["b8"] = [strip(s) for s in r["b8"]]
-    rec = school_records(rows)
-    rk = ranking_rows(rec)
-    trs = []
-    for i, school, cnt, total in rk:
-        pref = pref_map.get(school, "")
-        trs.append(f'<tr><td class="num">{i}</td><td>{esc(school)}</td><td>{esc(pref)}</td>'
-                   f'<td class="num">{cnt["優勝"]}</td><td class="num">{cnt["準優勝"]}</td>'
-                   f'<td class="num">{cnt["ベスト4"]}</td><td class="num">{cnt["ベスト8"]}</td>'
-                   f'<td class="num">{total}</td></tr>')
-    yrs = sorted({int(r["year"]) for r in rows})
-    caption = (f"<p>春の選抜・夏の選手権のベスト8以上を対象にした通算成績です。"
-               f"現在は{yrs[0]}年〜{yrs[-1]}年の{len(rows)}大会分を収録しており、順次拡充予定です"
-               "(2020年は春・夏とも中止)。</p>")
-    return (caption + '<div class="tablewrap"><table>'
-            '<tr><th class="num">#</th><th>学校</th><th>都道府県</th><th class="num">優勝</th>'
-            '<th class="num">準優勝</th><th class="num">ベスト4</th><th class="num">ベスト8</th>'
-            '<th class="num">B8以上計</th></tr>' + "".join(trs) + "</table></div>"), True
+FONT = 'ui-sans-serif,system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif'
 
-def japan_map(active):
+def japan_map_section(active):
+    """タイル型の日本地図セクション(インラインスタイル。アプリページにも静的ページにも埋め込める)"""
+    tile_base = ("display:flex;align-items:center;justify-content:center;border-radius:6px;"
+                 "font-size:11px;line-height:1.2;text-align:center;text-decoration:none;padding:2px")
     tiles = []
     for slug, name, col, row in PREFS:
-        style = f"grid-column:{col};grid-row:{row}"
+        pos = f"grid-column:{col};grid-row:{row};{tile_base}"
         if slug in active:
-            tiles.append(f'<a href="/{slug}/" style="{style}">{esc(name)}</a>')
+            tiles.append(f'<a href="/{slug}/" style="{pos};background:#1d4ed8;color:#fff;font-weight:bold">{esc(name)}</a>')
         else:
-            tiles.append(f'<span style="{style}" title="準備中">{esc(name)}</span>')
-    return ('<div class="mapwrap"><div class="jmap">' + "".join(tiles) + "</div></div>"
-            '<p class="maplegend">■ 青:公開中 / ■ 灰:準備中(順次公開予定)</p>')
+            tiles.append(f'<span style="{pos};background:#e2e8f0;color:#94a3b8" title="準備中">{esc(name)}</span>')
+    active_names = "、".join(PREF_NAME[s] for s in active)
+    return (
+        f'<section style="background:#f8fafc;padding:32px 16px;font-family:{FONT};line-height:1.9">'
+        '<h2 style="max-width:860px;margin:0 auto;font-size:1.1rem;color:#1e293b;'
+        'border-left:5px solid #1e293b;padding-left:10px">都道府県大会の通算ランキングはこちら</h2>'
+        '<p style="max-width:860px;margin:12px auto 20px;font-size:14px;color:#1e293b">'
+        '地図の都道府県をクリックすると、各都道府県大会(地方大会)のベスト8以上を対象にした'
+        '通算ランキング・学校別戦績・年度別結果が見られます。北海道は北北海道・南北海道に分けて扱います。'
+        f'(現在公開中: {esc(active_names)})</p>'
+        '<div style="overflow-x:auto;padding:4px 0">'
+        '<div style="display:grid;grid-template-columns:repeat(13,44px);grid-auto-rows:44px;'
+        'gap:4px;justify-content:center;min-width:640px">' + "".join(tiles) + "</div></div>"
+        '<p style="text-align:center;font-size:12px;color:#64748b;margin-top:8px">'
+        '■ 青:公開中 / ■ 灰:準備中(順次公開予定)</p></section>')
+
+TOP_FOOTER = (
+    f'<footer style="background:#1e293b;color:#cbd5e1;padding:24px 16px;text-align:center;'
+    f'font-family:{FONT};font-size:13px;line-height:2.2"><nav>'
+    '<a href="/saitama/" style="color:#cbd5e1;margin:0 10px;text-decoration:none">埼玉大会</a>|'
+    '<a href="/about.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">サイトについて</a>|'
+    '<a href="/privacy.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">プライバシーポリシー</a>|'
+    '<a href="/disclaimer.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">免責事項</a>|'
+    '<a href="/contact.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">お問い合わせ</a></nav>'
+    f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
 
 def build_top(active):
-    ranking_html, has_data = koshien_section()
-    active_names = "、".join(PREF_NAME[s] for s in active)
-    body = (
-        "<h1>甲子園 通算ランキング(春・夏総合)</h1>"
-        + ranking_html +
-        "<h2>都道府県大会の通算ランキングはこちら</h2>"
-        "<p>地図の都道府県をクリックすると、各都道府県大会(地方大会)のベスト8以上を対象にした"
-        "通算ランキング・学校別戦績・年度別結果が見られます。"
-        f"(現在公開中: {esc(active_names)})</p>"
-        + japan_map(set(active))
-    )
-    desc = ("高校野球の通算ランキング。春の選抜・夏の選手権(甲子園)と都道府県大会のベスト8以上を対象に、"
-            "学校別の優勝・準優勝・ベスト4・ベスト8回数を集計。")
-    nav = '<a href="/saitama/">埼玉大会</a>'
-    out = page(f"{SITE_NAME} | 甲子園&都道府県大会", desc, "/", body, nav)
-    with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(out)
-    return has_data
+    """トップページ: 甲子園データがあれば埼玉と同じ対話型アプリ + 日本地図。無ければ準備中表示"""
+    koshien_dir = os.path.join(ROOT, "data", "koshien")
+    results = os.path.join(koshien_dir, "results.csv")
+    map_html = japan_map_section(set(active))
+
+    if not os.path.exists(results):
+        body = ('<h1>甲子園 通算ランキング(春・夏総合)</h1>'
+                '<div class="notice">甲子園(春・夏)の通算ランキングは現在データを準備中です。</div>')
+        desc = "高校野球の通算ランキング。甲子園と都道府県大会のベスト8以上を対象に集計。"
+        out = page(f"{SITE_NAME} | 甲子園&都道府県大会", desc, "/", body + map_html,
+                   '<a href="/saitama/">埼玉大会</a>')
+        with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(out)
+        return False
+
+    # 学校名から「(都道府県)」を外してアプリ用CSVを再構成(名寄せのため)
+    rows = parse_results_csv(results)
+    lines = ["年,大会,優勝,準優勝,ベスト4,ベスト4,ベスト8,ベスト8,ベスト8,ベスト8,決勝勝者得点,決勝敗者得点"]
+    for r in rows:
+        b4 = (r["b4"] + ["", ""])[:2]
+        b8 = (r["b8"] + ["", "", "", ""])[:4]
+        cells = ([r["year"], r["block"], split_pref(r["ch"])[0], split_pref(r["ru"])[0]]
+                 + [split_pref(s)[0] for s in b4] + [split_pref(s)[0] for s in b8]
+                 + [r["ws"], r["ls"]])
+        lines.append(",".join(cells))
+    ih_text = "\n".join(lines)
+
+    scores = load_scores(os.path.join(koshien_dir, "scores.json"))
+    app = render_app(
+        koshien_dir, ih_text, scores,
+        title="甲子園 通算ランキング(春・夏総合)",
+        desc=("甲子園(春の選抜・夏の選手権)のベスト8以上を対象にした高校野球の通算ランキング。"
+              "都道府県大会のランキングも掲載。"),
+        scope="春・夏の甲子園",
+        pref_base="")
+
+    # フッターを「日本地図セクション + サイト共通フッター」に差し替える
+    fs = app.rindex("<footer style=")
+    fe = app.rindex("</footer>") + len("</footer>")
+    app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
+
+    with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
+        f.write(app)
+    return True
 
 # ---------------- sitemap ----------------
 
