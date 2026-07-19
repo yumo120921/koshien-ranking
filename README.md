@@ -1,39 +1,50 @@
-# 埼玉高校野球 通算ランキング
+# 高校野球 通算ランキング
 
-埼玉県の高校野球(夏の埼玉大会)の戦績データベースサイト。
+高校野球(甲子園・都道府県大会)の戦績データベースサイト。
 公開URL: https://koshien-ranking.com (Cloudflare Workers、pushで自動デプロイ)
+
+## サイト構成
+
+- `/` … トップ。甲子園(春・夏総合)の通算ランキング + 日本地図(都道府県大会へのリンク)
+- `/saitama/` … 埼玉大会の対話型ランキングアプリ
+- `/saitama/schools/` `/saitama/years/` … 埼玉の学校別・年度別ページ(自動生成)
+- 他の都道府県も `data/<slug>/results.csv` を置けば同じ構成で自動生成される
 
 ## データの更新方法
 
-1. `data/results.csv` を編集する(Excel/メモ帳可。UTF-8で保存すること)
+1. **都道府県大会**: `data/<県slug>/results.csv` を編集(UTF-8)
    - 列: `年,ブロック,優勝,準優勝,ベスト4,ベスト4,ベスト8,ベスト8,ベスト8,ベスト8,決勝勝者得点,決勝敗者得点`
    - ブロック列は通常空欄。ブロック制の年のみ `A`/`B`/`東`/`西`/`南`/`北` を入れる
-2. 準々決勝以降のスコア詳細は `data/scores.json` を編集する(キーは `"年|ブロック"`)
-3. ビルドを実行: `python build.py`
-   - index.html(アプリ)へのデータ注入、学校別・年度別ページ、sitemap.xml がすべて再生成される
-4. 反映: `git add -A` → `git commit -m "データ更新"` → `git push`
+   - スコア詳細は `data/<県slug>/scores.json`(キーは `"年|ブロック"`)
+2. **甲子園(トップのランキング)**: `data/koshien.csv` を作成する(現在は未作成=準備中表示)
+   - 列: `年,大会,優勝,準優勝,ベスト4,ベスト4,ベスト8,ベスト8,ベスト8,ベスト8,決勝勝者得点,決勝敗者得点`
+   - 「大会」列は `春` / `夏`。学校名は「校名(都道府県)」形式にすると県列に分けて表示される
+3. ビルド: `python build.py`(全ページ・sitemap再生成)
+4. 反映: `git add -A` → `git commit` → `git push`
+
+県slug一覧・地図タイル座標は build.py の `PREFS` に定義。
 
 ## ファイル構成
 
 | パス | 内容 | 手で編集する? |
 |---|---|---|
-| `data/results.csv` | 年度別成績(データの原本) | **する** |
-| `data/scores.json` | 準々決勝以降のスコア詳細(データの原本) | **する** |
-| `build.py` | サイト生成スクリプト | 機能追加時のみ |
-| `app_template.html` | アプリのテンプレート(データ部はプレースホルダ) | しない |
-| `index.html` | アプリ本体 | **しない(build.pyが生成)** |
-| `schools/` `years/` `sitemap.xml` | 学校別・年度別ページ | **しない(build.pyが生成)** |
+| `data/saitama/results.csv` ほか | データの原本 | **する** |
+| `build.py` | サイト生成スクリプト(都道府県定義もここ) | 機能追加時のみ |
+| `app_template.html` | 対話型アプリのテンプレート | しない |
+| `index.html` `<県slug>/` `sitemap.xml` | 生成物 | **しない(build.pyが生成)** |
 | `about.html` ほか固定ページ | サイト情報・ポリシー類 | 必要に応じて |
 | `prototype.html` | 初期の原本(保存用、配信されない) | しない |
-| `.assetsignore` | 配信対象から除外するファイルの一覧 | 必要に応じて |
-| `wrangler.jsonc` | Cloudflare Workers設定 | しない |
 
-## 公開・収益化の進捗
+## 進捗
 
-- [x] Cloudflare Workersで公開(2026-07)
-- [x] 独自ドメイン koshien-ranking.com 接続
-- [x] Google Search Console登録・sitemap送信
-- [x] プライバシーポリシー等のAdSense必須ページ
-- [x] 学校別(106校)・年度別(77年)の静的ページ生成
-- [ ] Google AdSense申請
-- [ ] 合格後: ads.txt設置、広告ユニット配置
+- [x] 公開・独自ドメイン・Search Console・AdSense必須ページ(2026-07)
+- [x] 埼玉: データ分離 + 学校別106/年度別77ページ生成
+- [x] 全国対応の骨組み(トップ=甲子園ランキング枠+日本地図、/saitama/へ移設)
+- [ ] 甲子園データ投入(スクショ待ち) → トップのランキング表が自動で出る
+- [ ] 他都道府県のデータ追加
+- [ ] Google AdSense申請(フェーズ3)
+
+## 備考
+
+- 対話型アプリのタイトル・内部文言は現状埼玉固定。他県を追加する際は app_template.html の一般化が必要
+- 旧URL(/schools/, /years/)は /saitama/ 配下へ移動済み(2026-07-19)。リダイレクトは未設定
