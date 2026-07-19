@@ -85,6 +85,43 @@ def load_scores(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
+# ランキング計算パラメータの既定値(config.csv が無い場合に使用)
+DEFAULT_PARAMS = {"pB8": 10, "pB4": 20, "pRU": 40, "pCH": 80, "cap": 5,
+                  "wc": 2, "streak": 10, "uu": 5, "ucap": 15, "excluded": "2020"}
+
+def load_config(path):
+    """config.csv(キー,値,説明)→ パラメータdict。無ければ既定値"""
+    params = dict(DEFAULT_PARAMS)
+    if not os.path.exists(path):
+        return params
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            cells = [x.strip() for x in line.strip().split(",")]
+            if len(cells) < 2 or cells[0] in ("", "キー") or cells[0].startswith("#"):
+                continue
+            key, val = cells[0], cells[1]
+            if key not in DEFAULT_PARAMS:
+                print(f"[warn] config.csv: 未知のキー {key} は無視します")
+                continue
+            if key == "excluded":
+                params[key] = val.replace(";", ",").replace("、", ",")
+            else:
+                params[key] = float(val) if "." in val else int(val)
+    return params
+
+def load_aliases(path):
+    """aliases.csv(統合前,統合後)→ [{'from':..,'to':..}]。無ければ空"""
+    out = []
+    if not os.path.exists(path):
+        return out
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            cells = [x.strip() for x in line.strip().split(",")]
+            if len(cells) < 2 or cells[0] in ("", "統合前") or cells[0].startswith("#"):
+                continue
+            out.append({"from": cells[0], "to": cells[1]})
+    return out
+
 def active_prefs():
     """data/<slug>/results.csv が存在する都道府県の一覧"""
     out = []
@@ -217,13 +254,19 @@ def build_pref(slug):
     os.makedirs(os.path.join(outbase, "schools"))
     os.makedirs(os.path.join(outbase, "years"))
 
+    params = load_config(os.path.join(ROOT, "data", slug, "config.csv"))
+    aliases = load_aliases(os.path.join(ROOT, "data", slug, "aliases.csv"))
+
     # --- アプリ本体(index.html) ---
     tpl = open(os.path.join(ROOT, "app_template.html"), encoding="utf-8").read()
-    assert "__IH_CSV__" in tpl and "__TH_JSON__" in tpl
+    for ph in ("__IH_CSV__", "__TH_JSON__", "__PARAMS_JSON__", "__ALIASES_JSON__"):
+        assert ph in tpl, f"テンプレートにプレースホルダがありません: {ph}"
     for bad in ("`", "${"):
         assert bad not in rows_text, f"CSVに使用できない文字: {bad}"
     th_js = json.dumps(scores, ensure_ascii=False, separators=(",", ":"))
     app = tpl.replace("__IH_CSV__", rows_text).replace("__TH_JSON__", th_js)
+    app = app.replace("__PARAMS_JSON__", json.dumps(params, ensure_ascii=False, separators=(",", ":")))
+    app = app.replace("__ALIASES_JSON__", json.dumps(aliases, ensure_ascii=False, separators=(",", ":")))
     app = app.replace("__PREF_BASE__", base)
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
