@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# TODO: 独自ドメイン取得後、下記URLを実際のドメインに差し替えてください
+Sitemap: https://REPLACE-WITH-YOUR-DOMAIN/sitemap.xml
