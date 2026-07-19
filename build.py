@@ -417,11 +417,24 @@ def koshien_section():
                 '公開までしばらくお待ちください。</div>'), False
     rows = parse_results_csv(path)
     # 「大会」列は block フィールドに入る(春/夏)
+    # 学校名は「校名(都道府県)」形式。都道府県表記は大会・年により変わる
+    # (例: 大阪桐蔭(大阪)と(北大阪))ため、校名で名寄せして最新の表記を採用する
+    pref_map = {}
+    def strip(name):
+        school, pref = split_pref(name)
+        if school and pref:
+            pref_map[school] = pref
+        return school
+    for r in rows:
+        r["ch"] = strip(r["ch"])
+        r["ru"] = strip(r["ru"])
+        r["b4"] = [strip(s) for s in r["b4"]]
+        r["b8"] = [strip(s) for s in r["b8"]]
     rec = school_records(rows)
     rk = ranking_rows(rec)
     trs = []
-    for i, name, cnt, total in rk:
-        school, pref = split_pref(name)
+    for i, school, cnt, total in rk:
+        pref = pref_map.get(school, "")
         trs.append(f'<tr><td class="num">{i}</td><td>{esc(school)}</td><td>{esc(pref)}</td>'
                    f'<td class="num">{cnt["優勝"]}</td><td class="num">{cnt["準優勝"]}</td>'
                    f'<td class="num">{cnt["ベスト4"]}</td><td class="num">{cnt["ベスト8"]}</td>'
