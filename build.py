@@ -427,7 +427,9 @@ def koshien_section():
                    f'<td class="num">{cnt["ベスト4"]}</td><td class="num">{cnt["ベスト8"]}</td>'
                    f'<td class="num">{total}</td></tr>')
     yrs = sorted({int(r["year"]) for r in rows})
-    caption = f"<p>春の選抜・夏の選手権({yrs[0]}年〜{yrs[-1]}年)のベスト8以上を対象にした通算成績です。</p>"
+    caption = (f"<p>春の選抜・夏の選手権のベスト8以上を対象にした通算成績です。"
+               f"現在は{yrs[0]}年〜{yrs[-1]}年の{len(rows)}大会分を収録しており、順次拡充予定です"
+               "(2020年は春・夏とも中止)。</p>")
     return (caption + '<div class="tablewrap"><table>'
             '<tr><th class="num">#</th><th>学校</th><th>都道府県</th><th class="num">優勝</th>'
             '<th class="num">準優勝</th><th class="num">ベスト4</th><th class="num">ベスト8</th>'
