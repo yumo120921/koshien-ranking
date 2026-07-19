@@ -505,7 +505,7 @@ def build_top(active):
     scores = load_scores(os.path.join(koshien_dir, "scores.json"))
     app = render_app(
         koshien_dir, ih_text, scores,
-        title="甲子園 通算ランキング(春・夏総合)",
+        title="全国高等学校野球部ランキング(春・夏総合)",
         desc=("甲子園(春の選抜・夏の選手権)のベスト8以上を対象にした高校野球の通算ランキング。"
               "都道府県大会のランキングも掲載。"),
         scope="春・夏の甲子園",
