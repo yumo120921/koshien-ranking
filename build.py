@@ -313,6 +313,14 @@ def build_pref(slug):
         desc=f"{name}の高校野球の戦績データベース。学校別の通算成績ランキングや年度別のトーナメント結果をまとめています。",
         scope=f"夏の{name}大会",
         pref_base=base)
+    # 左上に「トップページへ戻る」ボタン(県ページのみ)
+    back_btn = (
+        '<a href="/" style="position:fixed;top:10px;left:10px;z-index:9999;'
+        'background:rgba(255,255,255,0.92);color:#1e293b;border:1px solid #cbd5e1;'
+        'border-radius:9999px;padding:6px 14px;font-size:13px;font-weight:bold;'
+        f'text-decoration:none;font-family:{FONT};box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
+        '&#8592; トップページ</a>')
+    app = app.replace("<body>", "<body>" + back_btn, 1)
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
