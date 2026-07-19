@@ -88,8 +88,8 @@ def load_scores(path):
         return json.load(f)
 
 # ランキング計算パラメータの既定値(config.csv が無い場合に使用)
-DEFAULT_PARAMS = {"pB8": 10, "pB4": 20, "pRU": 40, "pCH": 80, "cap": 5,
-                  "wc": 2, "streak": 10, "uu": 5, "ucap": 15, "excluded": "2020"}
+DEFAULT_PARAMS = {"pB8": 10, "pB4": 20, "pRU": 40, "pCH": 80, "cap": 5, "mcap": 10,
+                  "wc": 2, "streak": 10, "uu": 5, "ucap": 15, "utcap": 0, "excluded": "2020"}
 
 def load_config(path):
     """config.csv(キー,値,説明)→ パラメータdict。無ければ既定値"""
