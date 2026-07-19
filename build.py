@@ -125,6 +125,21 @@ def load_aliases(path):
             out.append({"from": cells[0], "to": cells[1]})
     return out
 
+def load_defunct(path):
+    """defunct.csv(学校名,消滅年,備考)→ {表示名: 消滅年}。無ければ空。
+    学校名はランキング表示名(alias適用後の名前)で書く"""
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            cells = [x.strip() for x in line.strip().split(",")]
+            if len(cells) < 2 or cells[0] in ("", "学校名") or cells[0].startswith("#"):
+                continue
+            if cells[1].isdigit():
+                out[cells[0]] = int(cells[1])
+    return out
+
 DEFAULT_SOURCES = "出典: 各大会の公式記録・トーナメント表に基づき運営者が集計 / 点差係数の設計参考: World Football Elo Ratings(eloratings.net方式)"
 
 def load_sources(path):
@@ -138,8 +153,10 @@ def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base):
     params = load_config(os.path.join(datadir, "config.csv"))
     aliases = load_aliases(os.path.join(datadir, "aliases.csv"))
     sources = load_sources(os.path.join(datadir, "sources.txt"))
+    defunct = load_defunct(os.path.join(datadir, "defunct.csv"))
     tpl = open(os.path.join(ROOT, "app_template.html"), encoding="utf-8").read()
     for ph in ("__IH_CSV__", "__TH_JSON__", "__PARAMS_JSON__", "__ALIASES_JSON__",
+               "__DEFUNCT_JSON__",
                "__APP_TITLE__", "__APP_DESC__", "__APP_SCOPE__", "__APP_SOURCES__"):
         assert ph in tpl, f"テンプレートにプレースホルダがありません: {ph}"
     for bad in ("`", "${"):
@@ -149,6 +166,7 @@ def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base):
            .replace("__TH_JSON__", json.dumps(scores, ensure_ascii=False, separators=(",", ":")))
            .replace("__PARAMS_JSON__", json.dumps(params, ensure_ascii=False, separators=(",", ":")))
            .replace("__ALIASES_JSON__", json.dumps(aliases, ensure_ascii=False, separators=(",", ":")))
+           .replace("__DEFUNCT_JSON__", json.dumps(defunct, ensure_ascii=False, separators=(",", ":")))
            .replace("__APP_TITLE__", title)
            .replace("__APP_DESC__", desc)
            .replace("__APP_SCOPE__", scope)
