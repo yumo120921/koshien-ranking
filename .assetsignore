@@ -4,3 +4,4 @@ wrangler.jsonc
 app_template.html
 build.py
 data/
+tools/
