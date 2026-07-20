@@ -10,13 +10,15 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 
 PREF = sys.argv[1] if len(sys.argv) > 1 else "kanagawa"
 KANJI = sys.argv[2] if len(sys.argv) > 2 else "神奈川"
+# force=<ページ名>: 出典側の題字ミス等でホワイトリストに合わない単独開催ページを明示的に採用
+FORCE = {a.split("=", 1)[1] for a in sys.argv[3:] if a.startswith("force=")}
 DIR = os.path.join(BASE, PREF)
-# 合同大会のキーワード(大会名にこれが含まれる年は単独開催でないため除外)
-BLOCKWORDS = ["南関東", "東関東", "北関東", "関東大会", "京浜", "神静", "山静",
-              "甲神静", "北陸", "東海大会", "信越", "奥羽", "東北大会", "山陰", "山陽",
-              "四国大会", "北九州", "南九州", "西九州", "東京大会"]
-# 対象県の名前を含む語は除外キーワードから外す(例: 東京なら「東京大会」は単独開催)
-BLOCKWORDS = [w for w in BLOCKWORDS if KANJI not in w]
+# 単独開催の判定はホワイトリスト方式:
+# 大会名の末尾が「(記念)?(東西南北)?<県名>大会」に完全一致する場合のみ採用。
+# (南関東・京浜・神静・北陸・信越…など各地方の合同大会は自動的に外れる)
+# 2019年以降の「第N回全国高等学校野球選手権大会」のように地区名を含まない題も許容
+# (一県一代表時代のみの形式のため単独と判定し、ブロックはURL末尾から取る)
+ALLOW_RE = None  # main で KANJI から構築
 SFX_BLOCK = {"e": "東", "w": "西", "n": "北", "s": "南"}
 
 _z = "０１２３４５６７８９（）"
@@ -31,7 +33,8 @@ def clean_name(s):
     return s.strip().rstrip(".．・")
 
 def kai_to_year(kai):
-    return 1914 + kai if kai <= 26 else 1918 + kai
+    # 第27回=1941(中止年、地方大会のみ一部開催)、第28回=1946
+    return 1914 + kai if kai <= 27 else 1918 + kai
 
 ROUND_LBL = re.compile(r"^[0-9０-９一二三四五１-９]+回戦$")
 DATE_LBL = re.compile(r"^\d+月\d+日$")
@@ -63,17 +66,27 @@ def parse_box(rows):
             while j < len(rows) and len(out[lbl]) < BOX_NEED[lbl]:
                 rc = dict(rows[j])
                 v = rc.get(L)
+                fusen = any(t == "不戦勝" for c, t in rows[j] if L < c < nxt)
                 if v is None:
+                    # 不戦勝の勝者行は合計欄が無い(勝敗はbuild_recordが次ラウンド名から推定)
+                    if fusen:
+                        nm = next((t for c, t in sorted(rows[j]) if L < c <= L + 6
+                                   and t and not is_num(t) and t != "不戦勝"), None)
+                        if nm:
+                            out[lbl].append((None, clean_name(nm)))
                     j += 1
                     continue
                 if is_num(v):
                     nm = next((t for c, t in sorted(rows[j]) if L < c <= L + 6
-                               and t and not is_num(t)), None)
+                               and t and not is_num(t) and t != "不戦勝"), None)
                     if not nm:
                         break
-                    out[lbl].append((norm(v), clean_name(nm)))
+                    # 不戦勝の試合はスコア無し扱い(勝敗は次ラウンド出場から推定される)
+                    out[lbl].append((None if fusen else norm(v), clean_name(nm)))
                 elif sumcol is not None and is_num(rc.get(sumcol)):
                     out[lbl].append((norm(rc[sumcol]), clean_name(v)))
+                elif fusen and not is_num(v):
+                    out[lbl].append((None, clean_name(v)))
                 else:
                     break
                 j += 1
@@ -112,6 +125,14 @@ def parse_pref(path):
             hdr = (i, cells)
             break
     if hdr is None:
+        # 4校制など準々決勝が無いブラケット(決勝+準決勝のみ)も許容
+        # (誤検出対策: 採用時に main 側でスコア表の決勝と優勝・準優勝を照合する)
+        for i, cells in enumerate(rows):
+            texts = {t for _, t in cells}
+            if "決勝" in texts and "準決勝" in texts and "計" not in texts:
+                hdr = (i, cells)
+                break
+    if hdr is None:
         return title, None, box, champ, final2
     hi, hcells = hdr
     hdr_labels = {t for _, t in hcells if t}
@@ -120,16 +141,27 @@ def parse_pref(path):
         key = "準々決勝" if t == "準々" else t
         if key in ("決勝", "準決勝", "準々決勝"):
             cols[key] = c
-    new_layout = cols["決勝"] > cols["準々決勝"]
+    new_layout = cols["決勝"] > cols.get("準々決勝", cols["準決勝"])
     hdr_cols_sorted = sorted(c for c, t in hcells if t)
     def next_col(hc):
         bigger = [c for c in hdr_cols_sorted if c > hc]
         return bigger[0] if bigger else 10 ** 6
+    # 区間終端を先に確定: ヘッダの再出現(=別セクション)、イニングスコア表の開始、
+    # またはヘッダに無いN回戦ラベルの出現で打ち切る
+    end = len(rows)
+    for j in range(hi + 1, len(rows)):
+        texts_j = {t for _, t in rows[j] if t}
+        if ("決勝" in texts_j and "準決勝" in texts_j) or \
+           ("計" in texts_j and texts_j & set(BOX_NEED)) or \
+           any(ROUND_LBL.fullmatch(norm(t)) and t not in hdr_labels for t in texts_j):
+            end = j
+            break
     # 旧レイアウトの列オフセット検出: (得点,校名) = (+1,+3) か (+0,+2)
+    # (別セクションの列パターンを数えないよう、確定した区間内のみ走査する)
     off = (1, 3)
     if not new_layout:
         hits = {(1, 3): 0, (0, 2): 0}
-        for j in range(hi + 1, min(hi + 40, len(rows))):
+        for j in range(hi + 1, end):
             cells = dict(rows[j])
             for hc in cols.values():
                 for so, no in hits:
@@ -138,19 +170,7 @@ def parse_pref(path):
                         hits[(so, no)] += 1
         off = max(hits, key=hits.get)
     rounds = {"決勝": [], "準決勝": [], "準々決勝": []}
-    for j in range(hi + 1, len(rows)):
-        stop = False
-        texts_j = {t for _, t in rows[j] if t}
-        # ヘッダの再出現(=別セクション)またはイニングスコア表の開始で打ち切り
-        if ("決勝" in texts_j and "準決勝" in texts_j) or \
-           ("計" in texts_j and texts_j & set(BOX_NEED)):
-            break
-        for t in texts_j:
-            if ROUND_LBL.fullmatch(norm(t)) and t not in hdr_labels:
-                stop = True
-                break
-        if stop:
-            break
+    for j in range(hi + 1, end):
         cells = dict(rows[j])
         for rd, hc in cols.items():
             if new_layout:
@@ -173,7 +193,7 @@ def parse_pref(path):
 
 def build_record(rounds, warn):
     def pair_games(entries, expect, next_names):
-        if len(entries) != expect:
+        if entries and len(entries) != expect:
             warn.append(f"想定外の件数 {expect}→{len(entries)}")
         games = []
         for i in range(0, len(entries) - 1, 2):
@@ -229,6 +249,7 @@ def main():
 
     records = []
     inventory = []
+    included_pages = set()
     for path in sorted(glob.glob(os.path.join(DIR, "*.htm"))):
         name = os.path.basename(path).replace(".htm", "")
         m = re.match(r"(\d+)([ewns]?)$", name)
@@ -240,12 +261,17 @@ def main():
         inventory.append((kai, sfx, title))
         if not title:
             continue
-        if any(w in title for w in BLOCKWORDS):
-            continue
-        block = ""
-        for d in "東西南北":
-            if d + KANJI in title:
-                block = d
+        tail = re.search(r"回(?:全国高等学校野球選手権|全国中等学校優勝野球)(.*?大会)", title).group(1)
+        m2 = re.fullmatch(r"(?:記念)?([東西南北]?)" + re.escape(KANJI) + r"大会", tail)
+        if m2:
+            block = m2.group(1)
+        elif re.fullmatch(r"(?:記念)?大会", tail):
+            block = ""  # 地区名なしの新形式(2019年以降) → 単独開催
+        elif name in FORCE:
+            block = ""
+            print(f"FORCE {name}: 題字「{title}」を単独開催として採用")
+        else:
+            continue  # 合同大会など
         if not block and sfx:
             block = SFX_BLOCK[sfx]
         warn = []
@@ -261,6 +287,32 @@ def main():
                         print(f"CHECK BOX/枠不一致 {name}: B8 {sorted(set(rec['b8']))} vs {sorted(set(brec['b8']))}")
         elif rounds is not None:
             rec = build_record(rounds, warn)
+            # ブラケット誤検出対策(地区予選の枠や中止年を拾わないための審判):
+            # 1) 冒頭の優勝行が無い/一致しない → 不採用
+            # 2) スコア表の決勝(同点でない場合のみ)と優勝・準優勝が食い違う → 不採用
+            if rec is not None:
+                f2 = None
+                if final2 is not None:
+                    (sa, a), (sb, b) = final2
+                    if int(sa) != int(sb):  # 同点のスコア表は情報無しとして無視
+                        f2 = (a, b) if int(sa) > int(sb) else (b, a)
+                if champ is not None:
+                    if rec["ch"] != champ:
+                        print(f"CHECK 優勝行と不一致 {name}: 枠={rec['ch']} 優勝行={champ} → ブラケット破棄")
+                        rec = None
+                    elif f2 is not None and f2[0] == champ and (rec["ch"], rec["ru"]) != f2:
+                        # スコア表の決勝も優勝行と同じ勝者を示す=本物の決勝。準優勝の食い違いは
+                        # ブラケットが別の枠(予選等)である証拠なので破棄する。
+                        # (勝者が優勝行と違うスコア表は決勝以外の表なので無視)
+                        print(f"CHECK 枠決勝/スコア表不一致 {name}: {rec['ch']}-{rec['ru']}(枠) vs {f2[0]}-{f2[1]}(表) → ブラケット破棄")
+                        rec = None
+                elif f2 is not None:
+                    if (rec["ch"], rec["ru"]) != f2:
+                        print(f"CHECK 枠決勝/スコア表不一致 {name}: {rec['ch']}-{rec['ru']}(枠) vs {f2[0]}-{f2[1]}(表) → ブラケット破棄")
+                        rec = None
+                elif not rounds["準々決勝"]:
+                    print(f"CHECK 審判情報なし {name}: 準々決勝を欠く簡易ブラケットのため破棄")
+                    rec = None
         else:
             rec = None
         if rec is None:
@@ -271,9 +323,11 @@ def main():
                 if final2:
                     (sa, a), (sb, b) = final2
                     wnm, wsc, lnm, lsc = (a, sa, b, sb) if int(sa) >= int(sb) else (b, sb, a, sa)
-                    if wnm != champ:
-                        print(f"CHECK 優勝/決勝表不一致 {name}: {champ} vs {wnm}")
-                    rec.update({"ch": wnm, "ru": lnm, "ws": wsc, "ls": lsc})
+                    if wnm == champ:
+                        rec.update({"ru": lnm, "ws": wsc, "ls": lsc})
+                    else:
+                        # 優勝行と勝者が違うスコア表は決勝以外の表なので採用しない
+                        print(f"CHECK 優勝/決勝表不一致 {name}: {champ} vs {wnm} → スコア表は無視")
                 print(f"NOTE {name}: ブラケットなし → 優勝のみ収録 ({rec['ch']}"
                       + (f" 対 {rec['ru']} {rec['ws']}-{rec['ls']})" if rec["ru"] else ")"))
             else:
@@ -291,13 +345,12 @@ def main():
             if cand and rec["ch"] not in cand:
                 print(f"CHECK MISMATCH {year}{block}: 優勝 {rec['ch']} が全国データの{expected}代表 {sorted(cand)} に見つからない")
         records.append(rec)
+        included_pages.add((kai, sfx))
 
     print("---- 除外ページ ----")
     for kai, sfx, title in sorted(inventory):
-        if title and any(w in title for w in BLOCKWORDS):
-            print(f"第{kai}回{sfx}: {title} → 除外")
-        elif not title:
-            print(f"第{kai}回{sfx}: タイトル不明 → 除外")
+        if (kai, sfx) not in included_pages:
+            print(f"第{kai}回{sfx}: {title or 'タイトル不明'} → 除外")
 
     records.sort(key=lambda r: (r["year"], r["block"]))
     print("採用:", len(records), "大会 / 範囲:", records[0]["year"], "-", records[-1]["year"])
