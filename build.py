@@ -223,6 +223,41 @@ FOOTER = ('<footer><nav>'
           '<a href="/disclaimer.html">免責事項</a>|<a href="/contact.html">お問い合わせ</a></nav>'
           f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
 
+# 共有ボタン(X・LINE・リンクコピー)。全ページ共通・自己完結(外部スクリプトなし)。
+# URLとタイトルは表示時にJSで取るので、どのページにも同じスニペットをそのまま注入できる
+SHARE_SNIPPET = (
+    '<div id="shr" style="position:fixed;bottom:14px;right:12px;z-index:9998;'
+    'display:flex;flex-direction:column;gap:8px;">'
+    '<a id="shr-x" target="_blank" rel="noopener" aria-label="Xでポストする" title="Xでポストする"'
+    ' style="width:40px;height:40px;border-radius:50%;background:#000;color:#fff;display:flex;'
+    'align-items:center;justify-content:center;font-weight:bold;font-size:18px;'
+    'text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">X</a>'
+    '<a id="shr-line" target="_blank" rel="noopener" aria-label="LINEで送る" title="LINEで送る"'
+    ' style="width:40px;height:40px;border-radius:50%;background:#06C755;color:#fff;display:flex;'
+    'align-items:center;justify-content:center;font-weight:bold;font-size:10px;'
+    'text-decoration:none;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">LINE</a>'
+    '<button id="shr-cp" aria-label="リンクをコピー" title="リンクをコピー"'
+    ' style="width:40px;height:40px;border-radius:50%;background:#fff;color:#334155;'
+    'border:1px solid #cbd5e1;cursor:pointer;font-size:16px;padding:0;'
+    'box-shadow:0 1px 4px rgba(0,0,0,0.3)">&#128279;</button>'
+    '</div>'
+    '<script>(function(){var u=encodeURIComponent(location.href),'
+    't=encodeURIComponent(document.title);'
+    'document.getElementById("shr-x").href='
+    '"https://twitter.com/intent/tweet?text="+t+"&url="+u;'
+    'document.getElementById("shr-line").href='
+    '"https://social-plugins.line.me/lineit/share?url="+u;'
+    'document.getElementById("shr-cp").onclick=function(){var b=this;'
+    'if(navigator.clipboard){navigator.clipboard.writeText(location.href).then(function(){'
+    'b.textContent="\\u2713";setTimeout(function(){b.textContent="\\uD83D\\uDD17"},1200)})}};'
+    '})();</script>'
+)
+
+def add_share(doc):
+    """</body> の直前に共有ボタンを差し込む(全ページ共通)"""
+    i = doc.rindex("</body>")
+    return doc[:i] + SHARE_SNIPPET + doc[i:]
+
 def esc(s):
     return html.escape(str(s), quote=True)
 
@@ -244,6 +279,7 @@ def page(title, desc, canonical_path, body, nav=""):
 {body}
 </main>
 {FOOTER}
+{SHARE_SNIPPET}
 </body>
 </html>
 """
@@ -321,6 +357,7 @@ def build_pref(slug):
         f'text-decoration:none;font-family:{FONT};box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
         '&#8592; トップページ</a>')
     app = app.replace("<body>", "<body>" + back_btn, 1)
+    app = add_share(app)
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
@@ -542,6 +579,7 @@ def build_top(active):
     fs = app.rindex("<footer style=")
     fe = app.rindex("</footer>") + len("</footer>")
     app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
+    app = add_share(app)
 
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
