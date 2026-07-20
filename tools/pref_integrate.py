@@ -93,8 +93,40 @@ def parse_box(rows):
     return out
 
 def box_complete(out):
-    return (len(out["決勝"]) == 2 and len(out["準決勝"]) == 4
-            and len(out["準々決勝"]) == 8)
+    if not (len(out["決勝"]) == 2 and len(out["準決勝"]) == 4
+            and len(out["準々決勝"]) == 8):
+        return False
+    # 同点ペアがあるスコア表は延長打ち切り等の不完全表なので不採用
+    # (ブラケット側の最終スコアにフォールバックさせる)
+    for rd in out.values():
+        for i in range(0, len(rd) - 1, 2):
+            sa, sb = rd[i][0], rd[i + 1][0]
+            if sa is not None and sb is not None and int(sa) == int(sb):
+                return False
+    return True
+
+def scores_valid(th):
+    """アプリの対戦モード検証(jH)と同等のチェック"""
+    if len(th.get("qf", [])) != 4 or len(th.get("sf", [])) != 2 or not th.get("f"):
+        return False
+    games = th["qf"] + th["sf"] + [th["f"]]
+    for g in games:
+        if not str(g.get("a", "")).strip() or not str(g.get("b", "")).strip():
+            return False
+        try:
+            a, b = int(g["as"]), int(g["bs"])
+        except (ValueError, TypeError):
+            return False
+        if a == b or g["a"].strip() == g["b"].strip():
+            return False
+    w = lambda g: g["a"] if int(g["as"]) > int(g["bs"]) else g["b"]
+    qfw = [w(g) for g in th["qf"]]
+    if not all(x in qfw for x in (th["sf"][0]["a"], th["sf"][0]["b"], th["sf"][1]["a"], th["sf"][1]["b"])):
+        return False
+    if not all(x in [w(g) for g in th["sf"]] for x in (th["f"]["a"], th["f"]["b"])):
+        return False
+    allqf = [g["a"].strip() for g in th["qf"]] + [g["b"].strip() for g in th["qf"]]
+    return len(set(allqf)) == 8
 
 def parse_champion(rows):
     """冒頭の「優勝 ○○」行から優勝校名を取る(リーグ戦年度などブラケットが無いページ用)"""
@@ -153,6 +185,7 @@ def parse_pref(path):
         texts_j = {t for _, t in rows[j] if t}
         if ("決勝" in texts_j and "準決勝" in texts_j) or \
            ("計" in texts_j and texts_j & set(BOX_NEED)) or \
+           any(t.endswith("リーグ") or t.endswith("予選") for t in texts_j) or \
            any(ROUND_LBL.fullmatch(norm(t)) and t not in hdr_labels for t in texts_j):
             end = j
             break
@@ -223,6 +256,11 @@ def build_record(rounds, warn):
     b8 = [g["b"] for g in qf]
     def gj(g):
         return {"a": g["a"], "as": g["as"], "b": g["b"], "bs": g["bs"]}
+    # 少数校の大会では同一校が複数ラウンドに現れることがある。
+    # アプリは1行内の重複校名を「未完成」として弾くため、重複は上位の成績のみ残す
+    seen = {fin["a"], fin["b"]}
+    b4 = [x if x and x not in seen and not seen.add(x) else "" for x in b4]
+    b8 = [x if x and x not in seen and not seen.add(x) else "" for x in b8]
     return {"ch": fin["a"], "ru": fin["b"], "ws": fin["as"], "ls": fin["bs"],
             "b4": b4[:2] + [""] * (2 - len(b4[:2])),
             "b8": b8[:4] + [""] * (4 - len(b8[:4])),
@@ -363,13 +401,13 @@ def main():
         cells = [str(r["year"]), r["block"], r["ch"], r["ru"]] + r["b4"] + r["b8"] + [r["ws"], r["ls"]]
         lines.append(",".join(cells))
         sc = r["scores"]
-        # 不戦勝などで試合が欠けた大会はスコア詳細を出力しない
-        # (アプリの対戦モードは全8+4+2校のスコアが揃わないと「未完成」扱いで
-        #  集計から丸ごと除外されるため、成績のみモードに落として到達点を生かす)
-        if sc and len(sc["qf"]) == 4 and len(sc["sf"]) == 2 and sc.get("f"):
+        # 不戦勝などで試合が欠けた/整合しない大会はスコア詳細を出力しない
+        # (アプリの対戦モードは全8+4+2校のスコアが揃い勝ち上がりが整合しないと
+        #  「未完成」扱いで集計から丸ごと除外されるため、成績のみモードに落とす)
+        if sc and scores_valid(sc):
             scores[f"{r['year']}|{r['block']}"] = sc
         elif sc:
-            print(f"NOTE {r['year']}{r['block']}: 不戦勝等により対戦スコアは非出力(成績のみモード)")
+            print(f"NOTE {r['year']}{r['block']}: 不戦勝・不整合等により対戦スコアは非出力(成績のみモード)")
     with open(os.path.join(BASE, f"{PREF}_results.csv"), "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
     with open(os.path.join(BASE, f"{PREF}_scores.json"), "w", encoding="utf-8", newline="\n") as f:
