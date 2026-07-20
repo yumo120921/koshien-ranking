@@ -30,7 +30,7 @@ SITE_NAME = "高校野球 通算ランキング"
 # ---------------- 都道府県定義 (slug, 表示名, タイル列, タイル行) ----------------
 
 PREFS = [
-    # 北海道は北北海道・南北海道に分割して別「都道府県」として扱う
+    # 北海道は北北海道・南北海道に、東京は東東京・西東京に分割して別「都道府県」として扱う
     ("minamihokkaido", "南北海道", 12, 1), ("kitahokkaido", "北北海道", 13, 1),
     ("aomori", "青森", 13, 2), ("akita", "秋田", 12, 3), ("iwate", "岩手", 13, 3),
     ("yamagata", "山形", 12, 4), ("miyagi", "宮城", 13, 4),
@@ -43,18 +43,18 @@ PREFS = [
     ("yamaguchi", "山口", 3, 8), ("hiroshima", "広島", 4, 8), ("okayama", "岡山", 5, 8),
     ("hyogo", "兵庫", 6, 8), ("osaka", "大阪", 7, 8), ("shiga", "滋賀", 8, 8),
     ("aichi", "愛知", 10, 8), ("shizuoka", "静岡", 11, 8),
-    ("tokyo", "東京", 12, 8), ("chiba", "千葉", 13, 8),
+    ("nishitokyo", "西東京", 12, 8), ("higashitokyo", "東東京", 13, 8),
     ("nagasaki", "長崎", 1, 9), ("kumamoto", "熊本", 2, 9), ("oita", "大分", 3, 9),
     ("ehime", "愛媛", 5, 9), ("kagawa", "香川", 6, 9),
     ("wakayama", "和歌山", 7, 9), ("nara", "奈良", 8, 9), ("mie", "三重", 9, 9),
-    ("kanagawa", "神奈川", 12, 9),
+    ("kanagawa", "神奈川", 12, 9), ("chiba", "千葉", 13, 9),
     ("kagoshima", "鹿児島", 2, 10), ("miyazaki", "宮崎", 3, 10),
     ("kochi", "高知", 5, 10), ("tokushima", "徳島", 6, 10),
     ("tottori", "鳥取", 5, 7), ("shimane", "島根", 4, 7),
     ("okinawa", "沖縄", 1, 11),
 ]
-assert len(PREFS) == 48, f"都道府県(北海道は南北分割)は48のはず: {len(PREFS)}"
-assert len({(c, r) for _, _, c, r in PREFS}) == 48, "地図タイルの座標が重複"
+assert len(PREFS) == 49, f"都道府県(北海道は南北、東京は東西に分割)は49のはず: {len(PREFS)}"
+assert len({(c, r) for _, _, c, r in PREFS}) == 49, "地図タイルの座標が重複"
 PREF_NAME = {slug: name for slug, name, _, _ in PREFS}
 
 # ---------------- データ読み込み ----------------
