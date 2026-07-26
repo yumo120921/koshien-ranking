@@ -41,8 +41,16 @@
      「旧名,現名」を登録する → ランキング内部では同一校として合算し、最新の校名で表示される
    - パラメータは `data/koshien/config.csv`、出典表記は `data/koshien/sources.txt`
    - 準々決勝以降の全スコアを `data/koshien/scores.json` に置けば点差ボーナスが全試合で効く(現状は決勝のみ)
-3. ビルド: `python build.py`(全ページ・sitemap再生成)
-4. 反映: `git add -A` → `git commit` → `git push`
+3. **夏の地方大会の速報自動反映**: `tools/live_update.py` が朝日新聞「バーチャル高校野球」の
+   試合データJSONから終了済みの準々決勝以降を取り込み、当年の行を段階的に更新する
+   (QF終了→ベスト8、SF→ベスト4、決勝→優勝+得点。QF4+SF2+決勝が揃うとscores.jsonにも出力)。
+   GitHub Actions(`.github/workflows/live-update.yml`)が6〜8月の毎朝6時(JST)に自動実行→コミット→デプロイ。
+   手動実行はGitHubのActionsタブから live-update を Run workflow。
+   未知の校名はログにNOTEが出る: 表記ゆれなら live_update.py の NAME_MAP か aliases.csv に追加
+   (注意: GitHubは60日リポジトリが無活動だとスケジュール実行を止めるので、毎年6月にActionsタブを確認)
+4. ビルド: `python build.py`(全ページ・sitemap再生成)
+5. 反映: `git add -A` → `git commit` → `git push`
+6. データ検査: `python tools/validate_scores.py`(scores.jsonの整合チェック、異常時のみ出力)
 
 県slug一覧・地図タイル座標は build.py の `PREFS` に定義。
 
