@@ -223,6 +223,14 @@ FOOTER = ('<footer><nav>'
           '<a href="/disclaimer.html">免責事項</a>|<a href="/contact.html">お問い合わせ</a></nav>'
           f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
 
+# Google AdSense(サイト確認・広告配信用)。全ページの<head>に入れる
+ADSENSE = ('<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'
+           '?client=ca-pub-6908671930198074" crossorigin="anonymous"></script>')
+
+def add_adsense(doc):
+    """</head> の直前にAdSenseコードを差し込む"""
+    return doc.replace("</head>", ADSENSE + "</head>", 1)
+
 # 共有ボタン(X・LINE・リンクコピー)。全ページ共通・自己完結(外部スクリプトなし)。
 # URLとタイトルは表示時にJSで取るので、どのページにも同じスニペットをそのまま注入できる
 # 共有先URLはクリック時にJSで組み立てて開く(静的hrefを持たせない)。
@@ -276,6 +284,7 @@ def page(title, desc, canonical_path, body, nav=""):
 <meta name="description" content="{esc(desc)}">
 <link rel="canonical" href="{BASE_URL}{quote(canonical_path)}">
 <style>{CSS}</style>
+{ADSENSE}
 </head>
 <body>
 <header><a href="/">{SITE_NAME}</a>
@@ -362,7 +371,7 @@ def build_pref(slug):
         f'text-decoration:none;font-family:{FONT};box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
         '&#8592; トップページ</a>')
     app = app.replace("<body>", "<body>" + back_btn, 1)
-    app = add_share(app)
+    app = add_share(add_adsense(app))
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
@@ -584,7 +593,7 @@ def build_top(active):
     fs = app.rindex("<footer style=")
     fe = app.rindex("</footer>") + len("</footer>")
     app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
-    app = add_share(app)
+    app = add_share(add_adsense(app))
 
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
