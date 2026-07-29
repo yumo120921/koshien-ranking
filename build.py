@@ -219,8 +219,8 @@ footer a{color:#cbd5e1;margin:0 10px;text-decoration:none}
 
 FOOTER = ('<footer><nav>'
           '<a href="/">トップ</a>|<a href="/saitama/">埼玉大会</a>|'
-          '<a href="/about.html">サイトについて</a>|<a href="/privacy.html">プライバシーポリシー</a>|'
-          '<a href="/disclaimer.html">免責事項</a>|<a href="/contact.html">お問い合わせ</a></nav>'
+          '<a href="/about">サイトについて</a>|<a href="/privacy">プライバシーポリシー</a>|'
+          '<a href="/disclaimer">免責事項</a>|<a href="/contact">お問い合わせ</a></nav>'
           f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
 
 # Google AdSense(サイト確認・広告配信用)。全ページの<head>に入れる
@@ -230,6 +230,11 @@ ADSENSE = ('<script async src="https://pagead2.googlesyndication.com/pagead/js/a
 def add_adsense(doc):
     """</head> の直前にAdSenseコードを差し込む"""
     return doc.replace("</head>", ADSENSE + "</head>", 1)
+
+def add_canonical(doc, path):
+    """</head> の直前にcanonicalタグを差し込む(アプリ型ページ用)"""
+    tag = f'<link rel="canonical" href="{BASE_URL}{quote(path)}">'
+    return doc.replace("</head>", tag + "</head>", 1)
 
 # 共有ボタン(X・LINE・リンクコピー)。全ページ共通・自己完結(外部スクリプトなし)。
 # URLとタイトルは表示時にJSで取るので、どのページにも同じスニペットをそのまま注入できる
@@ -339,13 +344,13 @@ def build_pref(slug):
            f'<a href="{base}/schools/">学校別戦績</a><a href="{base}/years/">年度別結果</a>')
 
     def school_href(n):
-        return f"{base}/schools/{n}.html"
+        return f"{base}/schools/{n}"
 
     def school_link(n):
         return f'<a href="{esc(school_href(n))}">{esc(n)}</a>' if n else ""
 
     def year_href(y):
-        return f"{base}/years/{y}.html"
+        return f"{base}/years/{y}"
 
     def year_label(r):
         return r["year"] + (f"({r['block']})" if r["block"] else "")
@@ -371,7 +376,7 @@ def build_pref(slug):
         f'text-decoration:none;font-family:{FONT};box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
         '&#8592; トップページ</a>')
     app = app.replace("<body>", "<body>" + back_btn, 1)
-    app = add_share(add_adsense(app))
+    app = add_share(add_adsense(add_canonical(app, f"/{slug}/")))
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
@@ -546,10 +551,10 @@ TOP_FOOTER = (
     f'<footer style="background:#1e293b;color:#cbd5e1;padding:24px 16px;text-align:center;'
     f'font-family:{FONT};font-size:13px;line-height:2.2"><nav>'
     '<a href="/saitama/" style="color:#cbd5e1;margin:0 10px;text-decoration:none">埼玉大会</a>|'
-    '<a href="/about.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">サイトについて</a>|'
-    '<a href="/privacy.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">プライバシーポリシー</a>|'
-    '<a href="/disclaimer.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">免責事項</a>|'
-    '<a href="/contact.html" style="color:#cbd5e1;margin:0 10px;text-decoration:none">お問い合わせ</a></nav>'
+    '<a href="/about" style="color:#cbd5e1;margin:0 10px;text-decoration:none">サイトについて</a>|'
+    '<a href="/privacy" style="color:#cbd5e1;margin:0 10px;text-decoration:none">プライバシーポリシー</a>|'
+    '<a href="/disclaimer" style="color:#cbd5e1;margin:0 10px;text-decoration:none">免責事項</a>|'
+    '<a href="/contact" style="color:#cbd5e1;margin:0 10px;text-decoration:none">お問い合わせ</a></nav>'
     f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
 
 def build_top(active):
@@ -593,7 +598,7 @@ def build_top(active):
     fs = app.rindex("<footer style=")
     fe = app.rindex("</footer>") + len("</footer>")
     app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
-    app = add_share(add_adsense(app))
+    app = add_share(add_adsense(add_canonical(app, "/")))
 
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
@@ -617,7 +622,7 @@ def build_sitemap(all_paths):
 
 def main():
     active = active_prefs()
-    paths = ["/", "/about.html", "/privacy.html", "/disclaimer.html", "/contact.html"]
+    paths = ["/", "/about", "/privacy", "/disclaimer", "/contact"]
     for slug in active:
         paths += build_pref(slug)
     has_koshien = build_top(active)
