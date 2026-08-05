@@ -23,14 +23,17 @@
     return e;
   }
 
-  function rankText(team, w) {
-    var o = team.own[w], c = team.cross[w];
+  function rankText(name, w) {
+    var sc = B.schools[name] || { own: {}, cross: {} };
+    var o = sc.own[w], c = sc.cross[w];
     var t1 = B.ownLabel + (o ? o + "位" : "圏外");
-    var t2 = (team.crossLabel || B.crossLabel) + (c ? c + "位" : "圏外");
+    var t2 = (sc.crossLabel || B.crossLabel) + (c ? c + "位" : "圏外");
     return t1 + " ／ " + t2;
   }
 
-  function render(root) {
+  function render(root, ti) {
+    ti = ti || 0;
+    var T = B.tournaments[ti];
     root.innerHTML = "";
     root.dataset.done = "1";
     var wrap = document.createElement("div");
@@ -41,7 +44,11 @@
     var head = document.createElement("div");
     head.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 4px 6px;";
     head.innerHTML =
-      '<div style="font-weight:bold;font-size:16px;color:#14532d">' + B.title + "</div>" +
+      '<div style="font-weight:bold;font-size:16px;color:#14532d">' + T.title + "</div>" +
+      '<select id="bkt-tour" style="border:1px solid #cbd5e1;border-radius:6px;padding:3px 6px;font-size:12px">' +
+      B.tournaments.map(function (t, i) {
+        return '<option value="' + i + '"' + (i === ti ? " selected" : "") + ">" + t.label + "</option>";
+      }).join("") + "</select>" +
       '<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#475569">' +
       "順位の集計期間 <select id=\"bkt-win\" style=\"border:1px solid #cbd5e1;border-radius:6px;padding:3px 6px;font-size:12px\">" +
       B.windows.map(function (w) {
@@ -58,7 +65,7 @@
 
     var note = document.createElement("p");
     note.style.cssText = "margin:6px 4px 4px;font-size:11px;color:#94a3b8";
-    note.textContent = "※ 出場回数・年数は当サイト収録データ(ベスト8以上)基準。順位は選択した集計期間のランキングによる。";
+    note.textContent = "※ 出場回数・年数は当サイト収録データ(ベスト8以上)基準。順位は現在(最新年時点)のランキング。順位・回数の集計はベスト8以上の記録が対象。";
     wrap.appendChild(note);
 
     /* ---- チーム(左右スライドイン) ---- */
@@ -77,14 +84,14 @@
       el("text", { x: x, y: y - 2, "text-anchor": anchor, "font-size": 16, "font-weight": "bold", fill: "#0f172a", "font-family": "sans-serif" }, g)
         .textContent = team.name;
       var t2 = el("text", { x: x, y: y + 15, "text-anchor": anchor, "font-size": 10.5, fill: SUB, "font-family": "sans-serif", "class": "bkt-rank" }, g);
-      t2.textContent = rankText(team, String(B.defaultWindow));
-      t2.__team = team;
+      t2.textContent = rankText(team.name, String(B.defaultWindow));
+      t2.__name = team.name;
       el("text", { x: x, y: y + 29, "text-anchor": anchor, "font-size": 10.5, fill: SUB, "font-family": "sans-serif" }, g)
         .textContent = "ベスト8: " + team.app;
       return g;
     }
-    B.teams.L.forEach(function (t, i) { teamG(t, "L", i); });
-    B.teams.R.forEach(function (t, i) { teamG(t, "R", i); });
+    T.teams.L.forEach(function (t, i) { teamG(t, "L", i); });
+    T.teams.R.forEach(function (t, i) { teamG(t, "R", i); });
 
     /* ---- 線のパス定義 ---- */
     function pathsFor(side) {
@@ -97,7 +104,7 @@
       }
       P.black.push("M" + x2 + " " + MID[0] + " L" + x2 + " " + MID[1]);                              // SF縦
       P.black.push("M" + x2 + " " + SFY + " L" + XC + " " + SFY);                                    // SF→中央横
-      var games = B.games[side];
+      var games = T.games[side];
       for (var q = 0; q < 2; q++) {
         var wIdx = games.qf[q].w, wy = TY[q * 2 + wIdx];
         P.redQF.push("M" + x0 + " " + wy + " L" + x1 + " " + wy + " L" + x1 + " " + MID[q] + " L" + x2 + " " + MID[q]);
@@ -107,7 +114,7 @@
       return P;
     }
     var PL = pathsFor("L"), PR = pathsFor("R");
-    var champSide = B.games.f.w === 0 ? "L" : "R";
+    var champSide = T.games.f.w === 0 ? "L" : "R";
 
     function drawPath(d, color, width) {
       return el("path", { d: d, stroke: color, "stroke-width": width, fill: "none", "stroke-linecap": "square", "stroke-linejoin": "miter" }, svg);
@@ -162,16 +169,16 @@
     var scoreIdx = { L: [], R: [] }, sfIdx = {}, fIdx;
     ["L", "R"].forEach(function (side) {
       var x1 = side === "L" ? X1L : X1R, x2 = side === "L" ? X2L : X2R;
-      for (var q = 0; q < 2; q++) scoreIdx[side].push(scoreLabel(x1, MID[q] - 8, B.games[side].qf[q]));
-      sfIdx[side] = scoreLabel(x2, SFY - 8, B.games[side].sf);
+      for (var q = 0; q < 2; q++) scoreIdx[side].push(scoreLabel(x1, MID[q] - 8, T.games[side].qf[q]));
+      sfIdx[side] = scoreLabel(x2, SFY - 8, T.games[side].sf);
     });
-    fIdx = scoreLabel(XC, CY + 42, B.games.f, true);
+    fIdx = scoreLabel(XC, CY + 42, T.games.f, true);
 
     /* 中央(決勝)の飾り */
     el("text", { x: XC, y: CY - 60, "text-anchor": "middle", "font-size": 13, fill: SUB, "font-family": "sans-serif" }, svg).textContent = "決勝";
     var champG = el("g", { opacity: 0 }, svg);
     el("text", { x: XC, y: CY - 36, "text-anchor": "middle", "font-size": 15, fill: RED, "font-family": "sans-serif", "font-weight": "bold" }, champG)
-      .textContent = "🏆 " + B.champion + " 優勝";
+      .textContent = "🏆 " + T.champion + " 優勝";
 
     /* ---- タイムライン ---- */
     var T_TEAM = REDUCED ? 0 : 650;             // スライドイン完了
@@ -208,9 +215,10 @@
     /* 期間プルダウン → 順位注記の更新 */
     head.querySelector("#bkt-win").addEventListener("change", function () {
       var w = this.value;
-      svg.querySelectorAll(".bkt-rank").forEach(function (t) { t.textContent = rankText(t.__team, w); });
+      svg.querySelectorAll(".bkt-rank").forEach(function (t) { t.textContent = rankText(t.__name, w); });
     });
-    head.querySelector("#bkt-replay").addEventListener("click", function () { render(root); });
+    head.querySelector("#bkt-tour").addEventListener("change", function () { render(root, +this.value); });
+    head.querySelector("#bkt-replay").addEventListener("click", function () { render(root, ti); });
   }
 
   /* タブが開かれ #bracket-root がマウントされたら描画(タブ切替のたびに再生) */

@@ -607,7 +607,7 @@ def build_top(active):
     return True
 
 
-# ---------------- トーナメントタブ(最新大会のブラケット+順位注記) ----------------
+# ---------------- トーナメントタブ(全大会のブラケット+順位注記) ----------------
 
 import sys as _sys
 _sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -635,6 +635,7 @@ class _RankSource:
         self.full = _RE.compute_full(self.rows, self.scores, params, aliases)
         self.as_of = self.full["years"][-1] if self.full["years"] else None
         self._rk = {}
+        self._appy = {}
 
     def rank(self, name, w):
         if w not in self._rk:
@@ -642,14 +643,24 @@ class _RankSource:
         hit = self._rk[w].get(self.alias(name))
         return hit[0] if hit else None
 
+    def _app_years(self, block):
+        """(大会系列ごとの)学校→ベスト8以上の年リスト"""
+        if block not in self._appy:
+            t = self.alias
+            m = {}
+            for r in self.rows:
+                if block is not None and r["block"] != block:
+                    continue
+                y = int(r["year"])
+                for x in [r["ch"], r["ru"]] + r["b4"] + r["b8"]:
+                    if x:
+                        m.setdefault(t(x), set()).add(y)
+            self._appy[block] = {k: sorted(v) for k, v in m.items()}
+        return self._appy[block]
+
     def appearance(self, name, year, block=None):
         """当該年時点の「N年ぶり/連続M回目」(ベスト8以上ベース)"""
-        t = self.alias
-        target = t(name)
-        yrs = sorted({int(r["year"]) for r in self.rows
-                      if (block is None or r["block"] == block)
-                      and int(r["year"]) <= year
-                      and target in {t(x) for x in [r["ch"], r["ru"]] + r["b4"] + r["b8"] if x}})
+        yrs = [y for y in self._app_years(block).get(self.alias(name), []) if y <= year]
         if len(yrs) <= 1:
             return "初"
         run, i = 1, len(yrs) - 1
@@ -674,16 +685,13 @@ def _winner_idx(g):
 def _orient(th):
     """scoresエントリを左右ブラケット構造に並べる"""
     f = th["f"]
-    fin = [f["a"], f["b"]] if _winner_idx(f) == 0 else [f["b"], f["a"]]
-    # fin[0]=優勝, fin[1]=準優勝。左側=f["a"]側とする
     def w(g):
         return g["a"] if _winner_idx(g) == 0 else g["b"]
     sfL = next(g for g in th["sf"] if w(g) == f["a"])
     sfR = next(g for g in th["sf"] if g is not sfL)
     def side(sf):
-        pa, pb = sf["a"], sf["b"]
-        qf1 = next(g for g in th["qf"] if w(g) == pa)
-        qf2 = next(g for g in th["qf"] if w(g) == pb)
+        qf1 = next(g for g in th["qf"] if w(g) == sf["a"])
+        qf2 = next(g for g in th["qf"] if w(g) == sf["b"])
         teams = [qf1["a"], qf1["b"], qf2["a"], qf2["b"]]
         games = {"qf": [{"s": [int(qf1["as"]), int(qf1["bs"])], "w": _winner_idx(qf1)},
                         {"s": [int(qf2["as"]), int(qf2["bs"])], "w": _winner_idx(qf2)}],
@@ -691,91 +699,98 @@ def _orient(th):
         return teams, games
     tL, gL = side(sfL)
     tR, gR = side(sfR)
-    # 決勝スコア: [左(=f.a), 右] の順
-    fgame = {"s": [int(f["as"]), int(f["bs"])], "w": 0 if _winner_idx(f) == 0 else 1}
+    fgame = {"s": [int(f["as"]), int(f["bs"])], "w": _winner_idx(f)}
     return tL, tR, gL, gR, fgame, w(f)
 
 _PREF_SLUG = {name: slug for slug, name, _, _ in PREFS}
 
-def _bracket_json(kind, slug=None):
-    """kind='pref'|'top'。描画用JSON(dict)を返す。データ不足ならNone"""
-    if kind == "pref":
-        src = _get_source(slug)
-        cands = [k for k in src.scores if k.split("|")[0].isdigit()]
-        if not cands:
-            return None
-        key = max(cands, key=lambda k: (int(k.split("|")[0]), k.split("|")[1] == ""))
-        year, block = int(key.split("|")[0]), key.split("|")[1]
-        own, cross = src, _get_source("koshien")
-        own_label, cross_label = "県", "総合"
-        title = f"{year}年 選手権{PREF_NAME[slug]}大会" + (f"({block})" if block else "")
-        series_block = block if block else None
-        # ブロック年はそのブロックのみ、通常年は全行で出場歴を数える
-        app_block = None
+def _cross_source_for(name, pref):
+    """トップ用: 学校の所属県のRankSource(北海道・東京は両分割を在籍確認)"""
+    if pref in _PREF_SLUG:
+        slugs = [_PREF_SLUG[pref]]
+    elif pref == "北海道":
+        slugs = ["kitahokkaido", "minamihokkaido"]
+    elif pref == "東京":
+        slugs = ["higashitokyo", "nishitokyo"]
     else:
-        src = _get_source("koshien")
-        cands = [k for k in src.scores if k.split("|")[0].isdigit()]
-        if not cands:
-            return None
-        key = max(cands, key=lambda k: (int(k.split("|")[0]), k.split("|")[1] == "夏"))
-        year, block = int(key.split("|")[0]), key.split("|")[1]
-        own, cross = src, None
-        own_label, cross_label = "総合", "県"
-        title = f"{year}年 {'選抜' if block == '春' else '選手権'}大会(甲子園)"
-        app_block = block
-    th = src.scores[key]
-    try:
-        tL, tR, gL, gR, fgame, champ = _orient(th)
-    except StopIteration:
         return None
+    fallback = None
+    for sg in slugs:
+        if os.path.isdir(os.path.join(ROOT, "data", sg)):
+            cand = _get_source(sg)
+            if cand.alias(name) in cand.full["schools"]:
+                return cand
+            fallback = fallback or cand
+    return fallback
 
-    # トップ用: 校名→都道府県(当該大会の行の「校名(県)」から)
+def _bracket_json(kind, slug=None):
+    """kind='pref'|'top'。全大会分の描画用JSON(dict)。データ無しならNone"""
+    src = _get_source(slug if kind == "pref" else "koshien")
+    cands = [k for k in src.scores if k.split("|")[0].isdigit()]
+    if not cands:
+        return None
+    if kind == "pref":
+        cands.sort(key=lambda k: (int(k.split("|")[0]), k.split("|")[1]), reverse=True)
+    else:
+        cands.sort(key=lambda k: (int(k.split("|")[0]), k.split("|")[1] == "夏"), reverse=True)
+
+    # トップ用: 校名→都道府県(全収録行の「校名(県)」から。最新年を優先)
     pref_of = {}
     if kind == "top":
         raw = parse_results_csv(os.path.join(ROOT, "data", "koshien", "results.csv"))
-        for r in raw:
-            if int(r["year"]) == year and r["block"] == block:
-                for cell in [r["ch"], r["ru"]] + r["b4"] + r["b8"]:
-                    nm, pref = split_pref(cell)
-                    if pref:
-                        pref_of[nm] = pref
+        for r in sorted(raw, key=lambda r: int(r["year"])):
+            for cell in [r["ch"], r["ru"]] + r["b4"] + r["b8"]:
+                nm, pref = split_pref(cell)
+                if pref:
+                    pref_of[nm] = pref
 
-    def team_entry(name):
-        e = {"name": name,
-             "own": {str(w): own.rank(name, w) for w in BRACKET_WINDOWS},
-             "app": own.appearance(name, year, app_block if kind == "top" else None)}
+    schools = {}
+
+    def add_school(name):
+        if name in schools:
+            return
+        e = {"own": {str(w): src.rank(name, w) for w in BRACKET_WINDOWS}}
         if kind == "pref":
-            e["cross"] = {str(w): cross.rank(name, w) for w in BRACKET_WINDOWS}
+            csrc = _get_source("koshien")
+            e["cross"] = {str(w): csrc.rank(name, w) for w in BRACKET_WINDOWS}
         else:
             pref = pref_of.get(name, "")
-            slugs = []
-            if pref in _PREF_SLUG:
-                slugs = [_PREF_SLUG[pref]]
-            elif pref == "北海道":
-                slugs = ["kitahokkaido", "minamihokkaido"]
-            elif pref == "東京":
-                slugs = ["higashitokyo", "nishitokyo"]
-            csrc = None
-            for sg in slugs:
-                if os.path.isdir(os.path.join(ROOT, "data", sg)):
-                    cand = _get_source(sg)
-                    if cand.alias(name) in cand.full["schools"]:
-                        csrc = cand
-                        break
-                    csrc = csrc or cand
+            csrc = _cross_source_for(name, pref)
             if csrc:
                 e["cross"] = {str(w): csrc.rank(name, w) for w in BRACKET_WINDOWS}
-                e["crossLabel"] = pref or "県"
             else:
                 e["cross"] = {str(w): None for w in BRACKET_WINDOWS}
-                e["crossLabel"] = pref or "県"
-        return e
+            e["crossLabel"] = pref or "県"
+        schools[name] = e
 
-    return {"title": title, "champion": champ,
-            "ownLabel": own_label, "crossLabel": cross_label,
+    tournaments = []
+    for key in cands:
+        year, block = int(key.split("|")[0]), key.split("|")[1]
+        try:
+            tL, tR, gL, gR, fgame, champ = _orient(src.scores[key])
+        except (StopIteration, KeyError, ValueError, TypeError):
+            continue
+        if kind == "pref":
+            label = f"{year}年" + (f"({block})" if block else "")
+            title = f"{year}年 選手権{PREF_NAME[slug]}大会" + (f"({block})" if block else "")
+            app_block = None
+        else:
+            label = f"{year}年 {'選抜' if block == '春' else '選手権'}"
+            title = f"{year}年 {'選抜' if block == '春' else '選手権'}大会(甲子園)"
+            app_block = block
+        for n in tL + tR:
+            add_school(n)
+        def side_entries(names):
+            return [{"name": n, "app": src.appearance(n, year, app_block)} for n in names]
+        tournaments.append({"label": label, "title": title, "champion": champ,
+                            "teams": {"L": side_entries(tL), "R": side_entries(tR)},
+                            "games": {"L": gL, "R": gR, "f": fgame}})
+    if not tournaments:
+        return None
+    return {"ownLabel": "県" if kind == "pref" else "総合",
+            "crossLabel": "総合" if kind == "pref" else "県",
             "windows": BRACKET_WINDOWS, "defaultWindow": 20,
-            "teams": {"L": [team_entry(n) for n in tL], "R": [team_entry(n) for n in tR]},
-            "games": {"L": gL, "R": gR, "f": fgame}}
+            "schools": schools, "tournaments": tournaments}
 
 def add_bracket(doc, kind, slug=None):
     """アプリページにブラケットのデータと描画スクリプトを注入"""
