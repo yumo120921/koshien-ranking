@@ -71,7 +71,7 @@
     wrap.appendChild(scroller);
     var vw = isFull ? T.W : W8, vh = isFull ? T.H : H8;
     var svg = el("svg", { viewBox: "0 0 " + vw + " " + vh,
-      style: "min-width:" + (isFull ? Math.round(vw * 0.85) : 760) + "px;width:100%;display:block" }, scroller);
+      style: "min-width:760px;width:100%;display:block" }, scroller);
 
     var note = document.createElement("p");
     note.style.cssText = "margin:6px 4px 4px;font-size:11px;color:#94a3b8";
@@ -182,12 +182,12 @@
       });
       var C = T.center || {};
       if (C.x) {
-        el("text", { x: C.x, y: (C.yTop || 60) - 44, "text-anchor": "middle", "font-size": 13, fill: SUB, "font-family": "sans-serif" }, svg)
+        el("text", { x: C.x, y: (C.poleTop || 50) - 26, "text-anchor": "middle", "font-size": 13, fill: SUB, "font-family": "sans-serif" }, svg)
           .textContent = "決勝";
         if (C.score) {
-          var fi = scoreLabel(C.x, C.cy + 34, { s: [C.score.a, C.score.b], w: C.score.w }, 20);
+          var fi = scoreLabel(C.x, C.cy - 10, { s: [C.score.a, C.score.b], w: C.score.w }, 18);
           var champG = el("g", { opacity: 0 }, svg);
-          el("text", { x: C.x, y: (C.yTop || 60) - 22, "text-anchor": "middle", "font-size": 15, fill: RED, "font-family": "sans-serif", "font-weight": "bold" }, champG)
+          el("text", { x: C.x, y: (C.poleTop || 50) - 8, "text-anchor": "middle", "font-size": 15, fill: RED, "font-family": "sans-serif", "font-weight": "bold" }, champG)
             .textContent = "🏆 " + (C.champion || "") + " 優勝";
           var TF = T_RED + T.levels * (R_LV + RGAP) + 150;
           setTimeout(function () { showScore(fi); champG.setAttribute("opacity", 1); }, REDUCED ? 0 : TF);

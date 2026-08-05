@@ -13,9 +13,9 @@ data/<slug>/yagura.json(都道府県: スロット二分木)または data/koshi
 import math
 
 ROW_H = 20        # 1校あたりの行高
-NAME_W = 172      # 校名欄の幅
-COL_W = 56        # 1ラウンドあたりの横幅
-CENTER_GAP = 96   # 中央(決勝)の幅
+NAME_W = 150      # 校名欄の幅
+COL_W = 46        # 1ラウンドあたりの横幅
+CENTER_GAP = 90   # 中央(決勝)の幅
 TOP_PAD = 84
 BOTTOM_PAD = 30
 
@@ -105,8 +105,9 @@ def _resolve_feeds(nodes):
 
 def build_chain_full(yg):
     """全国(甲子園): 勝ち上がり連鎖からノード構造を作る(再抽選対応のため構造は動的)"""
+    NATIONAL_ROUNDS = ["1回戦", "2回戦", "3回戦", "準々決勝", "準決勝", "決勝"]
     games = [g for g in yg["games"] if g.get("a") or g.get("b")]
-    order = {r: i for i, r in enumerate(ROUND_ORDER)}
+    order = {r: i for i, r in enumerate(NATIONAL_ROUNDS)}
     games = [g for g in games if g["round"] in order]
     games.sort(key=lambda g: (order[g["round"]], g.get("date", ""), g["num"]))
     nodes = []
@@ -124,7 +125,7 @@ def build_chain_full(yg):
             last_game_of[_winner(g)] = node
     if not nodes:
         return None
-    levels = max(n["lv"] for n in nodes) + 1
+    levels = len(NATIONAL_ROUNDS)
     final = next((n for n in nodes if n["round"] == "決勝"), None)
 
     def mark_side(node, side):
@@ -246,17 +247,20 @@ def layout(struct, rank_of=None):
         bx, by = feed_xy(final, "b")
         if ay is not None and by is not None:
             cy = (ay + by) / 2
+            pole_top = TOP_PAD - 34
             blacks.append({"d": seg(ax, ay, XC, ay), "lv": final["lv"]})
             blacks.append({"d": seg(bx, by, XC, by), "lv": final["lv"]})
-            blacks.append({"d": seg(XC, ay, XC, by), "lv": final["lv"]})
-            center = {"x": XC, "yTop": min(ay, by), "cy": cy}
+            if abs(ay - by) > 0.5:
+                blacks.append({"d": seg(XC, ay, XC, by), "lv": final["lv"]})
+            blacks.append({"d": seg(XC, min(ay, by), XC, pole_top), "lv": final["lv"]})
+            center = {"x": XC, "cy": round(cy, 1), "poleTop": pole_top}
             if _done(final):
-                wleft = int(final["as"]) > int(final["bs"])
-                wx, wy = (ax, ay) if wleft else (bx, by)
+                a_wins = int(final["as"]) > int(final["bs"])
+                wx, wy = (ax, ay) if a_wins else (bx, by)
                 reds.append({"d": f"M{round(wx, 1)} {round(wy, 1)} L{XC} {round(wy, 1)} "
-                                  f"L{XC} {round(cy, 1)}", "lv": final["lv"]})
+                                  f"L{XC} {pole_top}", "lv": final["lv"]})
                 center["score"] = {"a": int(final["as"]), "b": int(final["bs"]),
-                                   "w": 0 if wleft else 1}
+                                   "w": 0 if a_wins else 1}
                 center["champion"] = _winner(final)
 
     return {"type": "full", "W": round(W), "H": round(H), "levels": levels,
