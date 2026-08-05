@@ -160,8 +160,6 @@ def fetch_yagura(bid, slug, year):
         for g in side:
             a = NAME_MAP.get((g.get("team1") or "").strip(), (g.get("team1") or "").strip())
             b = NAME_MAP.get((g.get("team2") or "").strip(), (g.get("team2") or "").strip())
-            if not a and not b:
-                continue
             games.append({"num": int(g["num"]), "round": (g.get("round") or "").strip(),
                           "a": a, "b": b,
                           "as": (g.get("score1") or "").strip(), "bs": (g.get("score2") or "").strip()})

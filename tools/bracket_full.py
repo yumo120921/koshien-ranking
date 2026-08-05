@@ -104,56 +104,75 @@ def _resolve_feeds(nodes):
 
 
 def build_chain_full(yg):
-    """全国(甲子園): 勝ち上がり連鎖からノード構造を作る(再抽選対応のため構造は動的)"""
-    NATIONAL_ROUNDS = ["1回戦", "2回戦", "3回戦", "準々決勝", "準決勝", "決勝"]
-    games = [g for g in yg["games"] if g.get("a") or g.get("b")]
-    order = {r: i for i, r in enumerate(NATIONAL_ROUNDS)}
-    games = [g for g in games if g["round"] in order]
-    games.sort(key=lambda g: (order[g["round"]], g.get("date", ""), g["num"]))
-    nodes = []
-    last_game_of = {}
-    seq = 0
-    for g in games:
-        node = {"lv": order[g["round"]], "a": g["a"], "b": g["b"],
-                "as": g["as"], "bs": g["bs"], "round": g["round"],
-                "feedA": last_game_of.get(g["a"]), "feedB": last_game_of.get(g["b"]),
-                "freeLeafs": [], "seq": seq}
-        seq += 1
-        node["freeLeafs"] = [node["seq"] * 2, node["seq"] * 2 + 1]
-        nodes.append(node)
-        if _done(g):
-            last_game_of[_winner(g)] = node
-    if not nodes:
+    """全国(甲子園): 通し番号(1回戦1..17, 2回戦18..33, …, 決勝48)を
+    スロット二分木に変換して県と同じ機構で構築する。
+    2回戦以降は完全二分木。1回戦は勝者名の出現先(未消化なら番号順に空き枠)へ接続。"""
+    ROUNDS = ["1回戦", "2回戦", "3回戦", "準々決勝", "準決勝", "決勝"]
+    order = {r: i for i, r in enumerate(ROUNDS)}
+    games = [g for g in yg["games"] if g["round"] in order]
+    if not games:
         return None
-    levels = len(NATIONAL_ROUNDS)
-    final = next((n for n in nodes if n["round"] == "決勝"), None)
+    by_round = {}
+    for g in sorted(games, key=lambda x: x["num"]):
+        by_round.setdefault(order[g["round"]], []).append(g)
+    rounds_present = sorted(by_round)
+    counts = [len(by_round[r]) for r in rounds_present]
+    # 末尾から完全二分木(…,4,2,1)になっている区間を探す
+    k = len(counts) - 1
+    if counts[k] != 1:
+        return None
+    bi = k
+    while bi > 0 and counts[bi - 1] == counts[bi] * 2:
+        bi -= 1
+    perfect_levels = len(counts) - bi          # 完全二分木の深さ(レベル数)
+    base_games = by_round[rounds_present[bi]]  # 完全木の最下段(例: 2回戦16試合)
+    attach_rounds = rounds_present[:bi]        # その下に接続する回戦(例: 1回戦)
+    if len(attach_rounds) > 1:
+        return None                            # 想定外の形は非対応
+    has_attach = len(attach_rounds) == 1
+    leaf_slots = len(base_games) * 2 * (2 if has_attach else 1)
 
-    def mark_side(node, side):
-        if node is None or node.get("side"):
-            return
-        node["side"] = side
-        mark_side(node.get("feedA"), side)
-        mark_side(node.get("feedB"), side)
+    # 完全木部分の擬似num: レベルごとのブロック連番
+    sizes = [leaf_slots >> (i + 1) for i in range(int(math.log2(leaf_slots)))]
+    offsets = [sum(sizes[:i]) for i in range(len(sizes))]
+    pseudo = []
+    base_level = 1 if has_attach else 0
+    for li, r in enumerate(rounds_present[bi:]):
+        lv = base_level + li
+        for j, g in enumerate(by_round[r]):
+            pseudo.append(dict(g, num=offsets[lv] + j + 1))
 
-    if final is not None:
-        final["side"] = "C"
-        mark_side(final.get("feedA"), "L")
-        mark_side(final.get("feedB"), "R")
-    roots = [n for n in nodes if not n.get("side")]
-    # 供給先が無いノード群(ツリーの根)を出現順に左右へ
-    fed = set()
-    for n in nodes:
-        for f in (n.get("feedA"), n.get("feedB")):
-            if f is not None:
-                fed.add(id(f))
-    tops = [n for n in roots if id(n) not in fed]
-    half = (len(tops) + 1) // 2
-    for i, n in enumerate(tops):
-        mark_side(n, "L" if i < half else "R")
-    for n in nodes:            # 念のため未割当を掃除
-        if not n.get("side"):
-            n["side"] = "L"
-    return {"nodes": nodes, "final": final, "levels": levels}
+    if has_attach:
+        # 1回戦を2回戦の枠に接続: 勝者名が2回戦に現れていればその側、
+        # 未確定分は「空きかつ未接続」の枠へ番号順に割当
+        first = by_round[rounds_present[0]]
+        base_sides = []      # (2回戦インデックスj, 側0/1) の一覧(枠順)
+        for j, g in enumerate(base_games):
+            base_sides.append((j, 0, g["a"]))
+            base_sides.append((j, 1, g["b"]))
+        assigned = {}        # 1回戦ゲームnum → 枠index(0..)
+        winners = {}
+        for g in first:
+            if _done(g):
+                winners[_winner(g)] = g["num"]
+        used = set()
+        for si, (j, side, nm) in enumerate(base_sides):
+            if nm and nm in winners:
+                assigned[winners[nm]] = si
+                used.add(si)
+        # 空き枠 = 名前が空 かつ 未接続
+        free = [si for si, (j, side, nm) in enumerate(base_sides)
+                if not nm and si not in used]
+        rest = [g["num"] for g in first if g["num"] not in assigned]
+        for num, si in zip(sorted(rest), free):
+            assigned[num] = si
+        for g in first:
+            si = assigned.get(g["num"])
+            if si is None:
+                continue
+            pseudo.append(dict(g, num=si + 1))   # レベル0: num=枠index+1
+
+    return build_pref_full({"slots": leaf_slots, "games": pseudo})
 
 
 def layout(struct, rank_of=None):

@@ -61,8 +61,7 @@ def fetch_zenkoku_yagura():
     for g in j.get("info", []):
         a = (g.get("team1") or "").split("（")[0].strip()
         b = (g.get("team3") or "").split("（")[0].strip()
-        if not a and not b:
-            continue
+        # 未確定(空欄)の試合も枠構造として必要なので保存する
         games.append({"num": int(g.get("number") or 0),
                       "round": (g.get("tournament") or "").strip(),
                       "date": str(g.get("game_date") or ""),
