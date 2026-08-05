@@ -377,6 +377,7 @@ def build_pref(slug):
         '&#8592; トップページ</a>')
     app = app.replace("<body>", "<body>" + back_btn, 1)
     app = add_share(add_adsense(add_canonical(app, f"/{slug}/")))
+    app = add_bracket(app, "pref", slug)
     with open(os.path.join(outbase, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
 
@@ -599,10 +600,194 @@ def build_top(active):
     fe = app.rindex("</footer>") + len("</footer>")
     app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
     app = add_share(add_adsense(add_canonical(app, "/")))
+    app = add_bracket(app, "top")
 
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
     return True
+
+
+# ---------------- トーナメントタブ(最新大会のブラケット+順位注記) ----------------
+
+import sys as _sys
+_sys.path.insert(0, os.path.join(ROOT, "tools"))
+import rank_engine as _RE
+
+BRACKET_WINDOWS = [5, 10, 20, 30, 50, 0]   # 0=全期間
+_BRACKET_JS_CACHE = {}
+
+class _RankSource:
+    """1データセット分のランキング計算(結果はウィンドウ別にキャッシュ)"""
+
+    def __init__(self, datadir, strip=False):
+        self.rows = parse_results_csv(os.path.join(datadir, "results.csv"))
+        if strip:
+            for r in self.rows:
+                r["ch"] = split_pref(r["ch"])[0]
+                r["ru"] = split_pref(r["ru"])[0]
+                r["b4"] = [split_pref(x)[0] for x in r["b4"]]
+                r["b8"] = [split_pref(x)[0] for x in r["b8"]]
+        self.scores = load_scores(os.path.join(datadir, "scores.json"))
+        params = load_config(os.path.join(datadir, "config.csv"))
+        aliases = load_aliases(os.path.join(datadir, "aliases.csv"))
+        self.defunct = load_defunct(os.path.join(datadir, "defunct.csv"))
+        self.alias = _RE.make_alias_fn(aliases)
+        self.full = _RE.compute_full(self.rows, self.scores, params, aliases)
+        self.as_of = self.full["years"][-1] if self.full["years"] else None
+        self._rk = {}
+
+    def rank(self, name, w):
+        if w not in self._rk:
+            self._rk[w] = _RE.ranks(_RE.window_table(self.full, w), self.defunct, self.as_of)
+        hit = self._rk[w].get(self.alias(name))
+        return hit[0] if hit else None
+
+    def appearance(self, name, year, block=None):
+        """当該年時点の「N年ぶり/連続M回目」(ベスト8以上ベース)"""
+        t = self.alias
+        target = t(name)
+        yrs = sorted({int(r["year"]) for r in self.rows
+                      if (block is None or r["block"] == block)
+                      and int(r["year"]) <= year
+                      and target in {t(x) for x in [r["ch"], r["ru"]] + r["b4"] + r["b8"] if x}})
+        if len(yrs) <= 1:
+            return "初"
+        run, i = 1, len(yrs) - 1
+        while i > 0 and yrs[i] - yrs[i - 1] == 1:
+            run += 1
+            i -= 1
+        if run >= 2:
+            return f"{run}年連続{len(yrs)}回目"
+        return f"{year - yrs[-2]}年ぶり{len(yrs)}回目"
+
+_rank_sources = {}
+
+def _get_source(slug):
+    """slug='koshien'は県名を外した甲子園データ"""
+    if slug not in _rank_sources:
+        _rank_sources[slug] = _RankSource(os.path.join(ROOT, "data", slug), strip=(slug == "koshien"))
+    return _rank_sources[slug]
+
+def _winner_idx(g):
+    return 0 if int(g["as"]) > int(g["bs"]) else 1
+
+def _orient(th):
+    """scoresエントリを左右ブラケット構造に並べる"""
+    f = th["f"]
+    fin = [f["a"], f["b"]] if _winner_idx(f) == 0 else [f["b"], f["a"]]
+    # fin[0]=優勝, fin[1]=準優勝。左側=f["a"]側とする
+    def w(g):
+        return g["a"] if _winner_idx(g) == 0 else g["b"]
+    sfL = next(g for g in th["sf"] if w(g) == f["a"])
+    sfR = next(g for g in th["sf"] if g is not sfL)
+    def side(sf):
+        pa, pb = sf["a"], sf["b"]
+        qf1 = next(g for g in th["qf"] if w(g) == pa)
+        qf2 = next(g for g in th["qf"] if w(g) == pb)
+        teams = [qf1["a"], qf1["b"], qf2["a"], qf2["b"]]
+        games = {"qf": [{"s": [int(qf1["as"]), int(qf1["bs"])], "w": _winner_idx(qf1)},
+                        {"s": [int(qf2["as"]), int(qf2["bs"])], "w": _winner_idx(qf2)}],
+                 "sf": {"s": [int(sf["as"]), int(sf["bs"])], "w": _winner_idx(sf)}}
+        return teams, games
+    tL, gL = side(sfL)
+    tR, gR = side(sfR)
+    # 決勝スコア: [左(=f.a), 右] の順
+    fgame = {"s": [int(f["as"]), int(f["bs"])], "w": 0 if _winner_idx(f) == 0 else 1}
+    return tL, tR, gL, gR, fgame, w(f)
+
+_PREF_SLUG = {name: slug for slug, name, _, _ in PREFS}
+
+def _bracket_json(kind, slug=None):
+    """kind='pref'|'top'。描画用JSON(dict)を返す。データ不足ならNone"""
+    if kind == "pref":
+        src = _get_source(slug)
+        cands = [k for k in src.scores if k.split("|")[0].isdigit()]
+        if not cands:
+            return None
+        key = max(cands, key=lambda k: (int(k.split("|")[0]), k.split("|")[1] == ""))
+        year, block = int(key.split("|")[0]), key.split("|")[1]
+        own, cross = src, _get_source("koshien")
+        own_label, cross_label = "県", "総合"
+        title = f"{year}年 選手権{PREF_NAME[slug]}大会" + (f"({block})" if block else "")
+        series_block = block if block else None
+        # ブロック年はそのブロックのみ、通常年は全行で出場歴を数える
+        app_block = None
+    else:
+        src = _get_source("koshien")
+        cands = [k for k in src.scores if k.split("|")[0].isdigit()]
+        if not cands:
+            return None
+        key = max(cands, key=lambda k: (int(k.split("|")[0]), k.split("|")[1] == "夏"))
+        year, block = int(key.split("|")[0]), key.split("|")[1]
+        own, cross = src, None
+        own_label, cross_label = "総合", "県"
+        title = f"{year}年 {'選抜' if block == '春' else '選手権'}大会(甲子園)"
+        app_block = block
+    th = src.scores[key]
+    try:
+        tL, tR, gL, gR, fgame, champ = _orient(th)
+    except StopIteration:
+        return None
+
+    # トップ用: 校名→都道府県(当該大会の行の「校名(県)」から)
+    pref_of = {}
+    if kind == "top":
+        raw = parse_results_csv(os.path.join(ROOT, "data", "koshien", "results.csv"))
+        for r in raw:
+            if int(r["year"]) == year and r["block"] == block:
+                for cell in [r["ch"], r["ru"]] + r["b4"] + r["b8"]:
+                    nm, pref = split_pref(cell)
+                    if pref:
+                        pref_of[nm] = pref
+
+    def team_entry(name):
+        e = {"name": name,
+             "own": {str(w): own.rank(name, w) for w in BRACKET_WINDOWS},
+             "app": own.appearance(name, year, app_block if kind == "top" else None)}
+        if kind == "pref":
+            e["cross"] = {str(w): cross.rank(name, w) for w in BRACKET_WINDOWS}
+        else:
+            pref = pref_of.get(name, "")
+            slugs = []
+            if pref in _PREF_SLUG:
+                slugs = [_PREF_SLUG[pref]]
+            elif pref == "北海道":
+                slugs = ["kitahokkaido", "minamihokkaido"]
+            elif pref == "東京":
+                slugs = ["higashitokyo", "nishitokyo"]
+            csrc = None
+            for sg in slugs:
+                if os.path.isdir(os.path.join(ROOT, "data", sg)):
+                    cand = _get_source(sg)
+                    if cand.alias(name) in cand.full["schools"]:
+                        csrc = cand
+                        break
+                    csrc = csrc or cand
+            if csrc:
+                e["cross"] = {str(w): csrc.rank(name, w) for w in BRACKET_WINDOWS}
+                e["crossLabel"] = pref or "県"
+            else:
+                e["cross"] = {str(w): None for w in BRACKET_WINDOWS}
+                e["crossLabel"] = pref or "県"
+        return e
+
+    return {"title": title, "champion": champ,
+            "ownLabel": own_label, "crossLabel": cross_label,
+            "windows": BRACKET_WINDOWS, "defaultWindow": 20,
+            "teams": {"L": [team_entry(n) for n in tL], "R": [team_entry(n) for n in tR]},
+            "games": {"L": gL, "R": gR, "f": fgame}}
+
+def add_bracket(doc, kind, slug=None):
+    """アプリページにブラケットのデータと描画スクリプトを注入"""
+    data = _bracket_json(kind, slug)
+    if data is None:
+        return doc
+    if "js" not in _BRACKET_JS_CACHE:
+        _BRACKET_JS_CACHE["js"] = open(os.path.join(ROOT, "tools", "bracket.js"), encoding="utf-8").read()
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    snippet = ("<script>window.__BRACKET__=" + payload + ";</script>"
+               "<script>" + _BRACKET_JS_CACHE["js"] + "</script>")
+    return doc.replace("</body>", snippet + "</body>", 1)
 
 # ---------------- sitemap ----------------
 
