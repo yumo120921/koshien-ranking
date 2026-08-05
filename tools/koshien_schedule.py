@@ -11,6 +11,8 @@ import re
 import sys
 import urllib.request
 
+from name_map import NAME_MAP  # 表記ゆれの正規化(関東第一→関東一 等)
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = "https://www.asahicom.jp/koshien/contents/virtualbaseball/site/zenkoku_all_game_list.json"
@@ -61,6 +63,8 @@ def fetch_zenkoku_yagura():
     for g in j.get("info", []):
         a = (g.get("team1") or "").split("（")[0].strip()
         b = (g.get("team3") or "").split("（")[0].strip()
+        a = NAME_MAP.get(a, a)
+        b = NAME_MAP.get(b, b)
         # 未確定(空欄)の試合も枠構造として必要なので保存する
         def _pref(t):
             t = (t or "")
