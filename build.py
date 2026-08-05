@@ -660,9 +660,9 @@ class _RankSource:
             self._appy[block] = {k: sorted(v) for k, v in m.items()}
         return self._appy[block]
 
-    def appearance(self, name, year, block=None):
-        """当該年時点の「N年ぶり/連続M回目」(ベスト8以上ベース)"""
-        yrs = [y for y in self._app_years(block).get(self.alias(name), []) if y <= year]
+    @staticmethod
+    def _fmt_appearance(yrs, year):
+        yrs = [y for y in yrs if y <= year]
         if len(yrs) <= 1:
             return "初"
         run, i = 1, len(yrs) - 1
@@ -672,6 +672,20 @@ class _RankSource:
         if run >= 2:
             return f"{run}年連続{len(yrs)}回目"
         return f"{year - yrs[-2]}年ぶり{len(yrs)}回目"
+
+    def appearance(self, name, year, block=None):
+        """当該年時点の「N年ぶり/連続M回目」(ベスト8以上ベース)"""
+        return self._fmt_appearance(self._app_years(block).get(self.alias(name), []), year)
+
+    def appearance_as_champion(self, name, year):
+        """優勝年ベースの出場歴(夏の甲子園出場=県大会優勝の回数に一致)"""
+        if not hasattr(self, "_champ_years"):
+            m = {}
+            for r in self.rows:
+                if (r["ch"] or "").strip():
+                    m.setdefault(self.alias(r["ch"]), set()).add(int(r["year"]))
+            self._champ_years = {k: sorted(v) for k, v in m.items()}
+        return self._fmt_appearance(self._champ_years.get(self.alias(name), []), year)
 
 _rank_sources = {}
 
@@ -818,9 +832,15 @@ def _bracket_json(kind, slug=None):
                     tname = "選抜" if season == "春" else "選手権"
                     full["title"] = f"{yyear}年 {tname}大会(甲子園・全{nteam}校)"
                     lbl = f"{yyear}年 {tname}(全{nteam}校)"
-                    # 出場歴(何年ぶり/連続何回目)を各校に付与(同じ大会系列で計算)
+                    # 出場歴(何年ぶり/連続何回目)を各校に付与。
+                    # 夏は「都道府県大会優勝=甲子園出場」なので所属県の優勝年基準で数える。
+                    # 春(選抜)は選考制のため、当サイト収録(ベスト8以上)基準にフォールバック
                     for te in full["teams"]:
-                        te["app"] = src.appearance(te["n"], yyear, season)
+                        csrc = _cross_source_for(te["n"], pref_of.get(te["n"], ""))
+                        if season == "夏" and csrc is not None:
+                            te["app"] = csrc.appearance_as_champion(te["n"], yyear)
+                        else:
+                            te["app"] = src.appearance(te["n"], yyear, season)
                 full["label"] = lbl
                 full["champion"] = (full.get("center") or {}).get("champion", "")
                 # 同年の既存(ベスト8)エントリを置換、無ければ先頭に挿入
