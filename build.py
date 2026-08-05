@@ -613,6 +613,7 @@ def build_top(active):
 import sys as _sys
 _sys.path.insert(0, os.path.join(ROOT, "tools"))
 import rank_engine as _RE
+import bracket_full as _BF
 
 BRACKET_WINDOWS = [5, 10, 20, 30, 50, 0]   # 0=全期間
 _BRACKET_JS_CACHE = {}
@@ -786,6 +787,48 @@ def _bracket_json(kind, slug=None):
         tournaments.append({"label": label, "title": title, "champion": champ,
                             "teams": {"L": side_entries(tL), "R": side_entries(tR)},
                             "games": {"L": gL, "R": gR, "f": fgame}})
+    # 当年の全校ヤグラがあれば、その年の大会をfullモードに差し替え(無ければ先頭に追加)
+    ypath = os.path.join(ROOT, "data", slug if kind == "pref" else "koshien", "yagura.json")
+    if os.path.exists(ypath):
+        try:
+            yg = json.load(open(ypath, encoding="utf-8"))
+        except Exception:
+            yg = None
+        if yg and yg.get("games"):
+            own_alias = src.alias
+
+            def _rank_of(name):
+                r = src.rank(name, 20)
+                return f"{'県' if kind == 'pref' else '総合'}{r}位" if r else None
+
+            full = _BF.build_full(yg, kind, _rank_of)
+            if full:
+                yyear = yg.get("year")
+                if not yyear:
+                    dates = [g.get("date", "") for g in yg["games"] if g.get("date")]
+                    yyear = int(max(dates)[:4]) if dates else None
+                nteam = yg.get("team_count") or len(full["teams"])
+                if kind == "pref":
+                    full["title"] = f"{yyear}年 選手権{PREF_NAME[slug]}大会(全{nteam}校)"
+                    lbl = f"{yyear}年(全{nteam}校)"
+                else:
+                    full["title"] = f"{yyear}年 選手権大会(甲子園・全{nteam}校)"
+                    lbl = f"{yyear}年 選手権(全{nteam}校)"
+                full["label"] = lbl
+                full["champion"] = (full.get("center") or {}).get("champion", "")
+                # 同年の既存(ベスト8)エントリを置換、無ければ先頭に挿入
+                repl = None
+                for i, t in enumerate(tournaments):
+                    if t["title"].startswith(f"{yyear}年"):
+                        repl = i
+                        break
+                # fullモードの校名にも順位注記辞書を使えるよう学校を登録
+                for te in full["teams"]:
+                    add_school(te["n"])
+                if repl is not None:
+                    tournaments[repl] = full
+                else:
+                    tournaments.insert(0, full)
     if not tournaments:
         return None
     return {"ownLabel": "県" if kind == "pref" else "総合",

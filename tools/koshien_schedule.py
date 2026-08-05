@@ -50,5 +50,43 @@ def main():
         print("schedule.json 変更なし")
 
 
+def fetch_zenkoku_yagura():
+    """全国大会(甲子園)の全試合リストを data/koshien/yagura.json に保存"""
+    url = "https://www.asahicom.jp/koshien/contents/virtualbaseball/site/zenkoku_yagura.json"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (koshien-ranking.com data sync; once daily)"})
+    raw = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+    m = re.search(r"\((.*)\)\s*;?\s*$", raw, re.S)
+    j = json.loads(m.group(1) if m else raw)
+    games = []
+    for g in j.get("info", []):
+        a = (g.get("team1") or "").split("（")[0].strip()
+        b = (g.get("team3") or "").split("（")[0].strip()
+        if not a and not b:
+            continue
+        games.append({"num": int(g.get("number") or 0),
+                      "round": (g.get("tournament") or "").strip(),
+                      "date": str(g.get("game_date") or ""),
+                      "a": a, "b": b,
+                      "as": (g.get("score1") or "").strip(),
+                      "bs": (g.get("score3") or "").strip()})
+    if not games:
+        return
+    out = {"games": games}
+    path = os.path.join(ROOT, "data", "koshien", "yagura.json")
+    old = None
+    if os.path.exists(path):
+        try:
+            old = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            pass
+    if out != old:
+        json.dump(out, open(path, "w", encoding="utf-8", newline="\n"),
+                  ensure_ascii=False, separators=(",", ":"))
+        print(f"koshien/yagura.json 更新: {len(games)}試合")
+    else:
+        print("koshien/yagura.json 変更なし")
+
+
 if __name__ == "__main__":
     main()
+    fetch_zenkoku_yagura()

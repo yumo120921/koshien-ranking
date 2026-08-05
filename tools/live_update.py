@@ -144,6 +144,45 @@ def fetch_block_games(bid, year, today):
     return out
 
 
+def fetch_yagura(bid, slug, year):
+    """組み合わせヤグラ(全校分)を取得して data/<slug>/yagura.json に保存。変更があればTrue"""
+    try:
+        j = get_jsonp(f"https://www.asahicom.jp/koshien/contents/virtualbaseball/site/chihou_yagura_info/{bid}.json")
+    except Exception:
+        return False
+    time.sleep(DELAY)
+    res = j.get("result") or []
+    if not res or j.get("status") != "OK":
+        return False
+    r = res[0]
+    games = []
+    for side in (r.get("game") or {}).values():
+        for g in side:
+            a = NAME_MAP.get((g.get("team1") or "").strip(), (g.get("team1") or "").strip())
+            b = NAME_MAP.get((g.get("team2") or "").strip(), (g.get("team2") or "").strip())
+            if not a and not b:
+                continue
+            games.append({"num": int(g["num"]), "round": (g.get("round") or "").strip(),
+                          "a": a, "b": b,
+                          "as": (g.get("score1") or "").strip(), "bs": (g.get("score2") or "").strip()})
+    if not games:
+        return False
+    out = {"year": year, "slots": int(r.get("chusenflag") or 0),
+           "team_count": int(r.get("team") or 0), "games": sorted(games, key=lambda x: x["num"])}
+    path = os.path.join(ROOT, "data", slug, "yagura.json")
+    old = None
+    if os.path.exists(path):
+        try:
+            old = json.load(open(path, encoding="utf-8"))
+        except Exception:
+            pass
+    if out != old:
+        json.dump(out, open(path, "w", encoding="utf-8", newline="\n"),
+                  ensure_ascii=False, separators=(",", ":"))
+        return True
+    return False
+
+
 def known_names(slug):
     names = set()
     p = os.path.join(ROOT, "data", slug, "results.csv")
@@ -230,6 +269,8 @@ def main():
             continue
         n = sum(len(v) for v in rounds.values())
         if n == 0:
+            if fetch_yagura(bid, slug, year):
+                changed_any.append(slug + "(ヤグラ)")
             continue
         kn = known_names(slug)
         for v in rounds.values():
@@ -237,6 +278,9 @@ def main():
                 for nm in (g["a"], g["b"]):
                     if nm not in kn:
                         print(f"NOTE {bname}: 未知の校名「{nm}」(新規校なら正常。表記ゆれならNAME_MAPかaliases.csvに追加)")
+        yg = fetch_yagura(bid, slug, year)
+        if yg:
+            changed_any.append(slug + "(ヤグラ)")
         if upsert(slug, year, rounds):
             fin = rounds["決勝"]
             state = f"優勝 {fin[0]['a']}" if fin else \
