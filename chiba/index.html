@@ -328,10 +328,20 @@ react/cjs/react-jsx-runtime.production.min.js:
     function animatePath(p, dur, delay) {
       var len = p.getTotalLength();
       p.style.strokeDasharray = len;
-      p.style.strokeDashoffset = len;
       if (REDUCED) { p.style.strokeDashoffset = 0; return; }
-      p.style.transition = "stroke-dashoffset " + dur + "ms linear " + delay + "ms";
-      requestAnimationFrame(function () { requestAnimationFrame(function () { p.style.strokeDashoffset = 0; }); });
+      if (p.animate) {
+        // Web Animations API(スタイル反映タイミングの競合が起きない)
+        p.style.strokeDashoffset = 0;
+        p.animate([{ strokeDashoffset: len }, { strokeDashoffset: 0 }],
+                  { duration: dur, delay: delay, easing: "linear", fill: "backwards" });
+      } else {
+        // フォールバック: 強制リフローを挟んでCSSトランジション
+        p.style.strokeDashoffset = len;
+        void p.getBoundingClientRect();
+        p.style.transition = "stroke-dashoffset " + dur + "ms linear " + delay + "ms";
+        void p.getBoundingClientRect();
+        p.style.strokeDashoffset = 0;
+      }
     }
 
     /* ---- スコアラベル(カウントアップ) ---- */
