@@ -812,8 +812,15 @@ def _bracket_json(kind, slug=None):
                     full["title"] = f"{yyear}年 選手権{PREF_NAME[slug]}大会(全{nteam}校)"
                     lbl = f"{yyear}年(全{nteam}校)"
                 else:
-                    full["title"] = f"{yyear}年 選手権大会(甲子園・全{nteam}校)"
-                    lbl = f"{yyear}年 選手権(全{nteam}校)"
+                    months = {int(g["date"][4:6]) for g in yg["games"]
+                              if re.fullmatch(r"\d{8}", str(g.get("date", "")))}
+                    season = "春" if months and max(months) <= 5 else "夏"
+                    tname = "選抜" if season == "春" else "選手権"
+                    full["title"] = f"{yyear}年 {tname}大会(甲子園・全{nteam}校)"
+                    lbl = f"{yyear}年 {tname}(全{nteam}校)"
+                    # 出場歴(何年ぶり/連続何回目)を各校に付与(同じ大会系列で計算)
+                    for te in full["teams"]:
+                        te["app"] = src.appearance(te["n"], yyear, season)
                 full["label"] = lbl
                 full["champion"] = (full.get("center") or {}).get("champion", "")
                 # 同年の既存(ベスト8)エントリを置換、無ければ先頭に挿入

@@ -231,7 +231,8 @@ def build_chain_full(yg):
     return {"nodes": nodes, "final": final, "levels": levels}
 
 
-def layout(struct, rank_of=None):
+def layout(struct, rank_of=None, row_h=None):
+    row_h = row_h or ROW_H
     """ノード構造 → 描画データ(teams/blacks/reds/scores/中央)"""
     nodes = struct["nodes"]
     levels = struct["levels"]
@@ -256,7 +257,7 @@ def layout(struct, rank_of=None):
         teams[side].sort(key=lambda t: t["key"])
 
     rows = max(len(teams["L"]), len(teams["R"]), 1)
-    H = TOP_PAD + rows * ROW_H + BOTTOM_PAD
+    H = TOP_PAD + rows * row_h + BOTTOM_PAD
     W = 2 * (NAME_W + COL_W * levels) + CENTER_GAP
     XC = W / 2
 
@@ -267,7 +268,7 @@ def layout(struct, rank_of=None):
     out_teams = []
     for side in ("L", "R"):
         for i, t in enumerate(teams[side]):
-            y = TOP_PAD + i * ROW_H
+            y = TOP_PAD + i * row_h
             ty[t["name"]] = (side, y)
             out_teams.append({"n": t["name"], "x": 8 if side == "L" else W - 8,
                               "y": y, "an": "start" if side == "L" else "end"})
@@ -356,7 +357,7 @@ def layout(struct, rank_of=None):
             t["out"] = 1
 
     return {"type": "full", "W": round(W), "H": round(H), "levels": levels,
-            "nameW": NAME_W, "rowH": ROW_H,
+            "nameW": NAME_W, "rowH": row_h,
             "teams": out_teams, "blacks": blacks, "reds": reds,
             "scores": scores, "center": center}
 
@@ -365,4 +366,5 @@ def build_full(yg, kind, rank_of=None):
     struct = build_pref_full(yg) if kind == "pref" else build_chain_full(yg)
     if struct is None:
         return None
-    return layout(struct, rank_of)
+    # 甲子園は出場歴の行を校名の下に置くため行高を広めに取る
+    return layout(struct, rank_of, row_h=30 if kind == "top" else None)

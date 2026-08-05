@@ -284,7 +284,7 @@ react/cjs/react-jsx-runtime.production.min.js:
     var note = document.createElement("p");
     note.style.cssText = "margin:6px 4px 4px;font-size:11px;color:#94a3b8";
     note.textContent = isFull
-      ? "※ 全出場校のトーナメント(毎日自動更新)。校名の後ろの順位は現在(最新年時点)のランキング。"
+      ? "※ 全出場校のトーナメント(毎日自動更新)。順位は現在(最新年時点)のランキング、回数は当サイト収録データ(ベスト8以上)基準。"
       : "※ 出場回数・年数は当サイト収録データ(ベスト8以上)基準。順位は現在(最新年時点)のランキング。";
     wrap.appendChild(note);
 
@@ -350,7 +350,7 @@ react/cjs/react-jsx-runtime.production.min.js:
       svg.querySelectorAll(".bkt-rank").forEach(function (t) { t.textContent = rankText(t.__name, w); });
       svg.querySelectorAll(".bkt-rankfull").forEach(function (t) {
         var r = rankShort(t.__name, w);
-        t.textContent = r ? "　" + r : "";
+        t.textContent = r ? (t.__side === "R" ? r + "　" : "　" + r) : "";
       });
     });
     head.querySelector("#bkt-tour").addEventListener("change", function () { render(root, +this.value); });
@@ -363,15 +363,25 @@ react/cjs/react-jsx-runtime.production.min.js:
     function renderFull() {
       var stagger = REDUCED ? 0 : Math.min(8, 700 / Math.max(1, T.teams.length));
       T.teams.forEach(function (t, i) {
-        var g = el("g", { "class": "bteam " + (t.an === "start" ? "bL" : "bR") }, svg);
+        var isL = t.an === "start";
+        var g = el("g", { "class": "bteam " + (isL ? "bL" : "bR") }, svg);
         g.style.animationDelay = (REDUCED ? 0 : (i % (T.teams.length / 2 | 0)) * stagger / 1000) + "s";
         var txt = el("text", { x: t.x, y: t.y + 4, "text-anchor": t.an, "font-size": 12,
           "font-weight": "bold", fill: "#0f172a", "font-family": "sans-serif" }, g);
-        txt.textContent = t.n;
-        var rs = el("tspan", { "font-size": 9.5, "font-weight": "normal", fill: SUB, "class": "bkt-rankfull" }, txt);
-        var r0 = rankShort(t.n, String(B.defaultWindow));
-        rs.textContent = r0 ? "　" + r0 : "";
+        // 順位は常にトーナメント図側: 左側=校名の右、右側=校名の左
+        var rs = el("tspan", { "font-size": 9.5, "font-weight": "normal", fill: SUB, "class": "bkt-rankfull" });
         rs.__name = t.n;
+        rs.__side = isL ? "L" : "R";
+        var nm = el("tspan", {});
+        nm.textContent = t.n;
+        var r0 = rankShort(t.n, String(B.defaultWindow));
+        rs.textContent = r0 ? (isL ? "　" + r0 : r0 + "　") : "";
+        if (isL) { txt.appendChild(nm); txt.appendChild(rs); }
+        else { txt.appendChild(rs); txt.appendChild(nm); }
+        if (t.app) {
+          el("text", { x: t.x, y: t.y + 14.5, "text-anchor": t.an, "font-size": 9,
+            fill: SUB, "font-family": "sans-serif" }, g).textContent = t.app;
+        }
       });
       var T_TEAM = REDUCED ? 0 : 750;
       var D_LV = 240, GAP_LV = 60;
