@@ -66,6 +66,7 @@
       B.tournaments.map(function (t, i) {
         return '<option value="' + i + '"' + (i === ti ? " selected" : "") + ">" + t.label + "</option>";
       }).join("") + "</select>" +
+      (B.textUrl ? '<a href="' + B.textUrl + '" style="font-size:12px;color:#1d4ed8;white-space:nowrap">結果一覧・速報ページ</a>' : "") +
       '<div style="margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#475569">' +
       "順位の集計期間 <select id=\"bkt-win\" style=\"border:1px solid #cbd5e1;border-radius:6px;padding:3px 6px;font-size:12px\">" +
       B.windows.map(function (w) {
@@ -321,4 +322,7 @@
     var root = document.getElementById("bracket-root");
     if (root && !root.dataset.done) render(root);
   }).observe(document.body, { childList: true, subtree: true });
+  /* 静的ページ(速報ページ)では #bracket-root が最初から存在するので即描画 */
+  var r0 = document.getElementById("bracket-root");
+  if (r0 && !r0.dataset.done) render(r0);
 })();

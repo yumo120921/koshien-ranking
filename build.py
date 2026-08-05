@@ -148,7 +148,8 @@ def load_sources(path):
         return DEFAULT_SOURCES
     return open(path, encoding="utf-8").read().strip()
 
-def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base):
+def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base,
+               seo_title=None, seo_desc=None):
     """app_template.html にデータと文言を注入して対話型アプリのHTMLを返す"""
     params = load_config(os.path.join(datadir, "config.csv"))
     aliases = load_aliases(os.path.join(datadir, "aliases.csv"))
@@ -161,6 +162,13 @@ def render_app(datadir, rows_text, scores, *, title, desc, scope, pref_base):
         assert ph in tpl, f"テンプレートにプレースホルダがありません: {ph}"
     for bad in ("`", "${"):
         assert bad not in rows_text, f"CSVに使用できない文字: {bad}"
+    # SEO用: <title>・og:title・meta descriptionだけ検索向けの文言に差し替える
+    # (画面上の見出しに出る __APP_TITLE__/__APP_DESC__ は title/desc のまま)
+    if seo_title:
+        tpl = tpl.replace("<title>__APP_TITLE__</title>", f"<title>{seo_title}</title>", 1)
+        tpl = tpl.replace('content="__APP_TITLE__"', f'content="{seo_title}"', 1)
+    if seo_desc:
+        tpl = tpl.replace('content="__APP_DESC__"', f'content="{seo_desc}"', 1)
     app = (tpl
            .replace("__IH_CSV__", rows_text)
            .replace("__TH_JSON__", json.dumps(scores, ensure_ascii=False, separators=(",", ":")))
@@ -334,6 +342,7 @@ def build_pref(slug):
     rows = parse_results_csv(os.path.join(ROOT, "data", slug, "results.csv"))
     scores = load_scores(os.path.join(ROOT, "data", slug, "scores.json"))
     rows_text = open(os.path.join(ROOT, "data", slug, "results.csv"), encoding="utf-8").read().strip()
+    tinfo = _yagura_info(slug)
 
     keys = {f"{r['year']}|{r['block']}" for r in rows}
     orphan = [k for k in scores if k not in keys]
@@ -342,6 +351,8 @@ def build_pref(slug):
 
     nav = (f'<a href="{base}/">{name}大会トップ</a>'
            f'<a href="{base}/schools/">学校別戦績</a><a href="{base}/years/">年度別結果</a>')
+    if tinfo:
+        nav += f'<a href="{base}/tournament/">トーナメント速報</a>'
 
     def school_href(n):
         return f"{base}/schools/{n}"
@@ -367,7 +378,12 @@ def build_pref(slug):
         title=f"{name}高校野球 通算ランキング",
         desc=f"{name}の高校野球の戦績データベース。学校別の通算成績ランキングや年度別のトーナメント結果をまとめています。",
         scope=f"夏の{name}大会",
-        pref_base=base)
+        pref_base=base,
+        seo_title=(f"{name}高校野球 通算ランキング | {tinfo['year']}年 {name}大会 トーナメント表・結果速報"
+                   if tinfo else None),
+        seo_desc=(f"{name}の高校野球の戦績データベース。{tinfo['year']}年夏の{name}大会の"
+                  "トーナメント表・結果速報を毎日更新。学校別の通算成績ランキングや年度別の結果も。"
+                  if tinfo else None))
     # 左上に「トップページへ戻る」ボタン(県ページのみ)
     back_btn = (
         '<a href="/" style="position:fixed;top:10px;left:10px;z-index:9999;'
@@ -508,6 +524,9 @@ def build_pref(slug):
         f.write(page(f"{name} 年度別 結果一覧 | {SITE_NAME}", desc, f"{base}/years/", body, nav))
 
     paths = [f"{base}/", f"{base}/schools/", f"{base}/years/"]
+    tpath = build_tournament_page("pref", slug, school_names=set(rec.keys()))
+    if tpath:
+        paths.append(tpath)
     paths += [school_href(n) for n in sorted(rec.keys())]
     paths += [year_href(y) for y in years]
     print(f"  {slug}: 大会 {len(rows)} / 学校 {len(rec)} / 年度 {len(years)}")
@@ -587,13 +606,20 @@ def build_top(active):
     ih_text = "\n".join(lines)
 
     scores = load_scores(os.path.join(koshien_dir, "scores.json"))
+    tinfo = _yagura_info("koshien")
+    tname = "選抜" if tinfo and tinfo["season"] == "春" else "選手権"
     app = render_app(
         koshien_dir, ih_text, scores,
         title="全国高等学校野球部ランキング(春・夏総合)",
         desc=("甲子園(春の選抜・夏の選手権)のベスト8以上を対象にした高校野球の通算ランキング。"
               "都道府県大会のランキングも掲載。"),
         scope="春・夏の甲子園",
-        pref_base="")
+        pref_base="",
+        seo_title=(f"甲子園 通算ランキング | {tinfo['year']}年 {tname}大会 トーナメント表・結果速報"
+                   if tinfo else None),
+        seo_desc=(f"甲子園(春の選抜・夏の選手権)の高校野球通算ランキングと、{tinfo['year']}年 "
+                  f"{tname}大会のトーナメント表・結果速報を毎日更新。都道府県大会のランキングも掲載。"
+                  if tinfo else None))
 
     # フッターを「日本地図セクション + サイト共通フッター」に差し替える
     fs = app.rindex("<footer style=")
@@ -803,6 +829,7 @@ def _bracket_json(kind, slug=None):
                             "teams": {"L": side_entries(tL), "R": side_entries(tR)},
                             "games": {"L": gL, "R": gR, "f": fgame}})
     # 当年の全校ヤグラがあれば、その年の大会をfullモードに差し替え(無ければ先頭に追加)
+    text_url = None
     ypath = os.path.join(ROOT, "data", slug if kind == "pref" else "koshien", "yagura.json")
     if os.path.exists(ypath):
         try:
@@ -864,24 +891,156 @@ def _bracket_json(kind, slug=None):
                     tournaments[repl] = full
                 else:
                     tournaments.insert(0, full)
+                text_url = f"/{slug}/tournament/" if kind == "pref" else "/koshien/tournament/"
     if not tournaments:
         return None
-    return {"ownLabel": "県" if kind == "pref" else "総合",
+    out = {"ownLabel": "県" if kind == "pref" else "総合",
             "crossLabel": "総合" if kind == "pref" else "県",
             "windows": BRACKET_WINDOWS, "defaultWindow": 20,
             "schools": schools, "tournaments": tournaments}
+    if text_url:
+        out["textUrl"] = text_url
+    return out
 
-def add_bracket(doc, kind, slug=None):
+def add_bracket(doc, kind, slug=None, self_page=False):
     """アプリページにブラケットのデータと描画スクリプトを注入"""
     data = _bracket_json(kind, slug)
     if data is None:
         return doc
+    if self_page:
+        data.pop("textUrl", None)
     if "js" not in _BRACKET_JS_CACHE:
         _BRACKET_JS_CACHE["js"] = open(os.path.join(ROOT, "tools", "bracket.js"), encoding="utf-8").read()
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     snippet = ("<script>window.__BRACKET__=" + payload + ";</script>"
                "<script>" + _BRACKET_JS_CACHE["js"] + "</script>")
     return doc.replace("</body>", snippet + "</body>", 1)
+
+
+# ---------------- トーナメント速報の専用ページ ----------------
+
+def _yagura_info(dirslug):
+    """data/<dirslug>/yagura.json の要約(年・季節)。無ければNone"""
+    path = os.path.join(ROOT, "data", dirslug, "yagura.json")
+    if not os.path.exists(path):
+        return None
+    try:
+        yg = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return None
+    if not yg.get("games"):
+        return None
+    dates = [str(g.get("date", "")) for g in yg["games"]
+             if re.fullmatch(r"\d{8}", str(g.get("date", "")))]
+    year = yg.get("year") or (int(max(dates)[:4]) if dates else None)
+    if not year:
+        return None
+    months = {int(d[4:6]) for d in dates}
+    season = "春" if months and max(months) <= 5 else "夏"
+    return {"yg": yg, "year": year, "season": season}
+
+
+def _fmt_mmdd(d):
+    d = str(d or "")
+    return f"{int(d[4:6])}月{int(d[6:8])}日" if re.fullmatch(r"\d{8}", d) else ""
+
+
+def build_tournament_page(kind, slug=None, school_names=None, active=None):
+    """最新大会の速報ページ(/{slug}/tournament/ ・ /koshien/tournament/)。
+    トーナメント図(対話型)に加えて、検索エンジンが読めるテキストの結果一覧を載せる"""
+    dirslug = slug if kind == "pref" else "koshien"
+    info = _yagura_info(dirslug)
+    if not info:
+        return None
+    yg, year, season = info["yg"], info["year"], info["season"]
+    nteam_s = f"全{yg['team_count']}校" if yg.get("team_count") else ""
+    if kind == "pref":
+        name = PREF_NAME[slug]
+        tourname = f"夏の高校野球 {name}大会"
+        urlpath = f"/{slug}/tournament/"
+        outdir = os.path.join(ROOT, slug, "tournament")
+        back = f'<a href="/{slug}/">{name}大会トップ(通算ランキング)</a>'
+        nav = (f'<a href="/{slug}/">{name}大会トップ</a>'
+               f'<a href="/{slug}/schools/">学校別戦績</a><a href="/{slug}/years/">年度別結果</a>')
+    else:
+        tourname = "春の甲子園(選抜大会)" if season == "春" else "夏の甲子園(選手権大会)"
+        urlpath = "/koshien/tournament/"
+        outdir = os.path.join(ROOT, "koshien", "tournament")
+        back = '<a href="/">春夏総合ランキング(トップページ)</a>'
+        nav = '<a href="/">春夏総合ランキング</a>'
+    h1 = f"{year}年 {tourname} トーナメント表・結果速報"
+
+    def team_html(nm, pref):
+        if kind == "pref":
+            if school_names and nm in school_names:
+                return f'<a href="/{slug}/schools/{esc(nm)}">{esc(nm)}</a>'
+            return esc(nm)
+        label = f"{nm}({pref})" if pref else nm
+        sg = _PREF_SLUG.get(pref)
+        if sg and active and sg in active:
+            return f'<a href="/{sg}/">{esc(label)}</a>'
+        return esc(label)
+
+    played, upcoming, order = {}, [], {}
+    champion = ""
+    for g in yg["games"]:
+        a, b = (g.get("a") or "").strip(), (g.get("b") or "").strip()
+        if not (a and b):
+            continue
+        rnd = g.get("round") or ""
+        num = int(g.get("num") or 0)
+        try:
+            sa, sb = int(g["as"]), int(g["bs"])
+        except (KeyError, ValueError, TypeError):
+            upcoming.append((num, rnd, g.get("date"), a, g.get("ap", ""), b, g.get("bp", "")))
+            continue
+        order[rnd] = min(order.get(rnd, num), num)
+        played.setdefault(rnd, []).append((num, g.get("date"), a, g.get("ap", ""), sa, sb, b, g.get("bp", "")))
+        if rnd == "決勝":
+            champion = a if sa > sb else b
+
+    secs = []
+    for rnd in sorted(played, key=lambda r: -order[r]):   # 決勝側(最新)から
+        trs = []
+        for num, d, a, ap, sa, sb, b, bp in sorted(played[rnd], key=lambda t: t[0]):
+            ah, bh = team_html(a, ap), team_html(b, bp)
+            if sa >= sb:
+                ah = f"<b>{ah}</b>"
+            if sb >= sa:
+                bh = f"<b>{bh}</b>"
+            trs.append(f'<tr><td>{_fmt_mmdd(d)}</td><td>{ah}</td>'
+                       f'<td class="num" style="white-space:nowrap">{sa} - {sb}</td><td>{bh}</td></tr>')
+        secs.append(f"<h2>{esc(rnd)}の結果</h2>"
+                    '<div class="tablewrap"><table><tr><th>日付</th><th>学校</th>'
+                    '<th class="num">スコア</th><th>学校</th></tr>' + "".join(trs) + "</table></div>")
+
+    up_html = ""
+    if upcoming:
+        trs = [f'<tr><td>{_fmt_mmdd(d)}</td><td>{esc(rnd)}</td>'
+               f'<td>{team_html(a, ap)} × {team_html(b, bp)}</td></tr>'
+               for num, rnd, d, a, ap, b, bp in sorted(upcoming)]
+        up_html = ('<h2>今後の対戦カード(組み合わせ)</h2>'
+                   '<div class="tablewrap"><table><tr><th>日付</th><th>回戦</th><th>対戦</th></tr>'
+                   + "".join(trs) + "</table></div>")
+
+    champ_line = f"<p>優勝: <b>{esc(champion)}</b></p>" if champion else ""
+    body = (f"<h1>{esc(h1)}</h1>"
+            f"<p>{year}年の{tourname}のトーナメント表(組み合わせ)と試合結果の速報ページです"
+            + (f"({nteam_s})" if nteam_s else "") +
+            "。結果は毎日自動で更新されます。トーナメント図の校名の脇には通算ランキングでの順位も表示しています。"
+            f"通算成績や過去の大会結果は{back}へ。</p>"
+            + champ_line +
+            '<div id="bracket-root" style="margin:16px 0"></div>'
+            + up_html + "".join(secs))
+    desc = (f"{year}年 {tourname}のトーナメント表(組み合わせ)と試合結果の速報。"
+            + (f"{nteam_s}の" if nteam_s else "") +
+            "各試合のスコアと勝ち上がりを毎日更新。学校別の通算成績ランキングも掲載。")
+    out = page(f"{h1} | {SITE_NAME}", desc, urlpath, body, nav)
+    out = add_bracket(out, kind, slug, self_page=True)
+    os.makedirs(outdir, exist_ok=True)
+    with open(os.path.join(outdir, "index.html"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(out)
+    return urlpath
 
 
 # ---------------- 甲子園ライブ配信ウィジェット(トップページ) ----------------
@@ -923,6 +1082,9 @@ def main():
     for slug in active:
         paths += build_pref(slug)
     has_koshien = build_top(active)
+    tp = build_tournament_page("top", active=set(active))
+    if tp:
+        paths.append(tp)
     n = build_sitemap(paths)
     print(f"OK: 都道府県 {len(active)} ({', '.join(active)}) / 甲子園データ: {'あり' if has_koshien else '準備中'} / sitemap {n} URLs")
 
