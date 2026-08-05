@@ -247,6 +247,15 @@ react/cjs/react-jsx-runtime.production.min.js:
     return o ? B.ownLabel + o + "位" : "";
   }
 
+  function rankTriple(name, w, app) {
+    var sc = B.schools[name] || { own: {}, cross: {} };
+    var o = sc.own[w], c = sc.cross[w];
+    var parts = [B.ownLabel + (o ? o + "位" : "圏外"),
+                 (sc.crossLabel || B.crossLabel) + (c ? c + "位" : "圏外")];
+    if (app) parts.push(app);
+    return parts.join("/");
+  }
+
   function render(root, ti) {
     ti = ti || 0;
     var T = B.tournaments[ti];
@@ -351,7 +360,7 @@ react/cjs/react-jsx-runtime.production.min.js:
       svg.querySelectorAll(".bkt-rank").forEach(function (t) { t.textContent = rankText(t.__name, w); });
       svg.querySelectorAll(".bkt-rankfull").forEach(function (t) {
         var r = rankShort(t.__name, w);
-        if (t.__app) { t.textContent = r ? r + "/" + t.__app : t.__app; }
+        if (t.__app) { t.textContent = rankTriple(t.__name, w, t.__app); }
         else { t.textContent = r ? (t.__side === "R" ? r + "　" : "　" + r) : ""; }
       });
     });
@@ -372,13 +381,13 @@ react/cjs/react-jsx-runtime.production.min.js:
           "font-weight": "bold", fill: "#0f172a", "font-family": "sans-serif" }, g);
         var r0 = rankShort(t.n, String(B.defaultWindow));
         if (t.app) {
-          // 甲子園: 校名の下に「総合〇位/〇年ぶり〇回目」を1行で
+          // 甲子園: 校名の下に「総合〇位/県〇位/〇年ぶり〇回目」を1行で
           txt.textContent = t.n;
           var t2 = el("text", { x: t.x, y: t.y + 14.5, "text-anchor": t.an, "font-size": 9,
             fill: SUB, "font-family": "sans-serif", "class": "bkt-rankfull" }, g);
           t2.__name = t.n;
           t2.__app = t.app;
-          t2.textContent = r0 ? r0 + "/" + t.app : t.app;
+          t2.textContent = rankTriple(t.n, String(B.defaultWindow), t.app);
         } else {
           // 県: 順位は常にトーナメント図側: 左側=校名の右、右側=校名の左
           var rs = el("tspan", { "font-size": 9.5, "font-weight": "normal", fill: SUB, "class": "bkt-rankfull" });

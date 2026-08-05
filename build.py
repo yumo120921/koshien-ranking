@@ -752,6 +752,7 @@ def _bracket_json(kind, slug=None):
 
     # トップ用: 校名→都道府県(全収録行の「校名(県)」から。最新年を優先)
     pref_of = {}
+    pref_of_yagura = {}
     if kind == "top":
         raw = parse_results_csv(os.path.join(ROOT, "data", "koshien", "results.csv"))
         for r in sorted(raw, key=lambda r: int(r["year"])):
@@ -770,7 +771,7 @@ def _bracket_json(kind, slug=None):
             csrc = _get_source("koshien")
             e["cross"] = {str(w): csrc.rank(name, w) for w in BRACKET_WINDOWS}
         else:
-            pref = pref_of.get(name, "")
+            pref = pref_of_yagura.get(name) or pref_of.get(name, "")
             csrc = _cross_source_for(name, pref)
             if csrc:
                 e["cross"] = {str(w): csrc.rank(name, w) for w in BRACKET_WINDOWS}
@@ -816,6 +817,13 @@ def _bracket_json(kind, slug=None):
                 return f"{'県' if kind == 'pref' else '総合'}{r}位" if r else None
 
             full = _BF.build_full(yg, kind, _rank_of)
+            if full and kind == "top":
+                # ヤグラデータの所属県表記を優先(ベスト8歴が無い学校も県を特定できる)
+                for g in yg["games"]:
+                    if g.get("a") and g.get("ap"):
+                        pref_of_yagura[g["a"]] = g["ap"]
+                    if g.get("b") and g.get("bp"):
+                        pref_of_yagura[g["b"]] = g["bp"]
             if full:
                 yyear = yg.get("year")
                 if not yyear:
@@ -836,7 +844,7 @@ def _bracket_json(kind, slug=None):
                     # 夏は「都道府県大会優勝=甲子園出場」なので所属県の優勝年基準で数える。
                     # 春(選抜)は選考制のため、当サイト収録(ベスト8以上)基準にフォールバック
                     for te in full["teams"]:
-                        csrc = _cross_source_for(te["n"], pref_of.get(te["n"], ""))
+                        csrc = _cross_source_for(te["n"], pref_of_yagura.get(te["n"]) or pref_of.get(te["n"], ""))
                         if season == "夏" and csrc is not None:
                             te["app"] = csrc.appearance_as_champion(te["n"], yyear)
                         else:
