@@ -164,6 +164,41 @@ def build_chain_full(yg):
         return None
     nodes = struct["nodes"]
     lower_levels = base_level + len(lower) - bi
+
+    # 最上段(3回戦)のサブツリー単位で左右のチーム数がほぼ等しくなるよう再配分
+    # (準々決勝以降は抽選制のため、左右の割り付けは表示上の都合で決めてよい)
+    top_lv = lower_levels - 1
+    roots = sorted([n for n in nodes if n["lv"] == top_lv], key=lambda n: n["pos"])
+
+    def _subtree(n, acc):
+        acc.append(n)
+        for k in n.get("kids") or []:
+            if k is not None:
+                _subtree(k, acc)
+        return acc
+
+    def _team_count(ns):
+        c = 0
+        for m in ns:
+            for which, f in (("a", m["feedA"]), ("b", m["feedB"])):
+                if f is None and m[which]:
+                    c += 1
+        return c
+
+    subs = [_subtree(r, []) for r in roots]
+    sizes = [_team_count(ns) for ns in subs]
+    total = sum(sizes)
+    best_k, best_diff, run = 0, None, 0
+    for k in range(len(subs) + 1):
+        diff = abs(total - 2 * run)
+        if best_diff is None or diff < best_diff:
+            best_k, best_diff = k, diff
+        if k < len(subs):
+            run += sizes[k]
+    for i, ns in enumerate(subs):
+        side = "L" if i < best_k else "R"
+        for m in ns:
+            m["side"] = side
     levels = lower_levels + len(UPPER_ROUNDS)   # 準々決勝〜決勝の列は常に確保
 
     # 勝者名 → 最後に勝ったノード
@@ -279,8 +314,13 @@ def layout(struct, rank_of=None):
             reds.append({"d": f"M{round(wx, 1)} {round(wy, 1)} L{jx} {round(wy, 1)} "
                               f"L{jx} {round(jy, 1)} L{round(nxt, 1)} {round(jy, 1)}",
                          "lv": n["lv"]})
-            scores.append({"x": jx, "y": round(jy - 5, 1), "a": int(n["as"]),
-                           "b": int(n["bs"]), "w": 0 if wtop else 1, "lv": n["lv"]})
+            # 得点は各校の線が接続点で曲がる角の手前に個別表示
+            for val, win, fx, fy in ((int(n["as"]), wtop, ax, ay),
+                                     (int(n["bs"]), not wtop, bx, by)):
+                an = "end" if fx < jx else "start"
+                sx = jx - 3 if fx < jx else jx + 3
+                scores.append({"x": round(sx, 1), "y": round(fy - 4, 1), "v": val,
+                               "w": 1 if win else 0, "an": an, "lv": n["lv"]})
 
     if final is not None:
         ax, ay = feed_xy(final, "a")
@@ -299,8 +339,12 @@ def layout(struct, rank_of=None):
                 wx, wy = (ax, ay) if a_wins else (bx, by)
                 reds.append({"d": f"M{round(wx, 1)} {round(wy, 1)} L{XC} {round(wy, 1)} "
                                   f"L{XC} {pole_top}", "lv": final["lv"]})
-                center["score"] = {"a": int(final["as"]), "b": int(final["bs"]),
-                                   "w": 0 if a_wins else 1}
+                for val, win, fx, fy in ((int(final["as"]), a_wins, ax, ay),
+                                         (int(final["bs"]), not a_wins, bx, by)):
+                    an = "end" if fx < XC else "start"
+                    sx = XC - 4 if fx < XC else XC + 4
+                    scores.append({"x": round(sx, 1), "y": round(fy - 4, 1), "v": val,
+                                   "w": 1 if win else 0, "an": an, "lv": final["lv"]})
                 center["champion"] = _winner(final)
 
     losers = set()

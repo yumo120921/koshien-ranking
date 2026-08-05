@@ -176,21 +176,33 @@
         animatePath(drawPath(r.d, RED, 2.6), R_LV, T_RED + r.lv * (R_LV + RGAP));
       });
       T.scores.forEach(function (s) {
-        var idx = scoreLabel(s.x, s.y, { s: [s.a, s.b], w: s.w }, 10);
-        setTimeout(function () { showScore(idx); },
-          REDUCED ? 0 : T_RED + s.lv * (R_LV + RGAP) + R_LV * 0.55);
+        var g = el("g", { opacity: 0 }, svg);
+        var t = el("text", { x: s.x, y: s.y, "text-anchor": s.an || "middle",
+          "font-size": 10, "font-family": "sans-serif", "font-weight": "bold",
+          fill: s.w ? RED : BLACK }, g);
+        t.textContent = REDUCED ? s.v : "0";
+        setTimeout(function () {
+          g.setAttribute("opacity", 1);
+          if (REDUCED) return;
+          var t0 = performance.now(), D = 380;
+          (function tick(now) {
+            var r = Math.max(0, Math.min(1, (now - t0) / D));
+            r = 1 - (1 - r) * (1 - r);
+            t.textContent = Math.round(s.v * r);
+            if (r < 1) requestAnimationFrame(tick);
+          })(performance.now());
+        }, REDUCED ? 0 : T_RED + s.lv * (R_LV + RGAP) + R_LV * 0.55);
       });
       var C = T.center || {};
       if (C.x) {
         el("text", { x: C.x, y: (C.poleTop || 50) - 26, "text-anchor": "middle", "font-size": 13, fill: SUB, "font-family": "sans-serif" }, svg)
           .textContent = "決勝";
-        if (C.score) {
-          var fi = scoreLabel(C.x, C.cy - 10, { s: [C.score.a, C.score.b], w: C.score.w }, 18);
+        if (C.champion) {
           var champG = el("g", { opacity: 0 }, svg);
           el("text", { x: C.x, y: (C.poleTop || 50) - 8, "text-anchor": "middle", "font-size": 15, fill: RED, "font-family": "sans-serif", "font-weight": "bold" }, champG)
-            .textContent = "🏆 " + (C.champion || "") + " 優勝";
+            .textContent = "🏆 " + C.champion + " 優勝";
           var TF = T_RED + T.levels * (R_LV + RGAP) + 150;
-          setTimeout(function () { showScore(fi); champG.setAttribute("opacity", 1); }, REDUCED ? 0 : TF);
+          setTimeout(function () { champG.setAttribute("opacity", 1); }, REDUCED ? 0 : TF);
         }
       }
     }
