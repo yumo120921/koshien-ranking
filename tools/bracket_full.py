@@ -104,75 +104,96 @@ def _resolve_feeds(nodes):
 
 
 def build_chain_full(yg):
-    """全国(甲子園): 通し番号(1回戦1..17, 2回戦18..33, …, 決勝48)を
-    スロット二分木に変換して県と同じ機構で構築する。
-    2回戦以降は完全二分木。1回戦は勝者名の出現先(未消化なら番号順に空き枠)へ接続。"""
-    ROUNDS = ["1回戦", "2回戦", "3回戦", "準々決勝", "準決勝", "決勝"]
-    order = {r: i for i, r in enumerate(ROUNDS)}
-    games = [g for g in yg["games"] if g["round"] in order]
-    if not games:
-        return None
+    """全国(甲子園): 1〜3回戦は固定ヤグラ(通し番号のスロット木)。
+    準々決勝以降は各試合後の抽選で決まるため、組み合わせが入り次第
+    勝者名の連鎖で接続して描画する(未定の間は中央を空けておく)。"""
+    SLOT_ROUNDS = ["1回戦", "2回戦", "3回戦"]
+    UPPER_ROUNDS = ["準々決勝", "準決勝", "決勝"]
     by_round = {}
-    for g in sorted(games, key=lambda x: x["num"]):
-        by_round.setdefault(order[g["round"]], []).append(g)
-    rounds_present = sorted(by_round)
-    counts = [len(by_round[r]) for r in rounds_present]
-    # 末尾から完全二分木(…,4,2,1)になっている区間を探す
-    k = len(counts) - 1
-    if counts[k] != 1:
+    for g in sorted(yg["games"], key=lambda x: x["num"]):
+        by_round.setdefault(g["round"], []).append(g)
+    lower = [r for r in SLOT_ROUNDS if r in by_round]
+    if not lower:
         return None
-    bi = k
+    counts = [len(by_round[r]) for r in lower]
+    # 末尾が倍々になっている区間の先頭を探す(それより下は接続回戦)
+    bi = len(counts) - 1
     while bi > 0 and counts[bi - 1] == counts[bi] * 2:
         bi -= 1
-    perfect_levels = len(counts) - bi          # 完全二分木の深さ(レベル数)
-    base_games = by_round[rounds_present[bi]]  # 完全木の最下段(例: 2回戦16試合)
-    attach_rounds = rounds_present[:bi]        # その下に接続する回戦(例: 1回戦)
-    if len(attach_rounds) > 1:
-        return None                            # 想定外の形は非対応
-    has_attach = len(attach_rounds) == 1
+    if bi > 1:
+        return None
+    has_attach = bi == 1
+    base_games = by_round[lower[bi]]
     leaf_slots = len(base_games) * 2 * (2 if has_attach else 1)
+    slot_levels = int(math.log2(leaf_slots))
+    sizes = [leaf_slots >> (i + 1) for i in range(slot_levels)]
+    offsets = [sum(sizes[:i]) for i in range(slot_levels)]
 
-    # 完全木部分の擬似num: レベルごとのブロック連番
-    sizes = [leaf_slots >> (i + 1) for i in range(int(math.log2(leaf_slots)))]
-    offsets = [sum(sizes[:i]) for i in range(len(sizes))]
     pseudo = []
     base_level = 1 if has_attach else 0
-    for li, r in enumerate(rounds_present[bi:]):
+    for li, r in enumerate(lower[bi:]):
         lv = base_level + li
         for j, g in enumerate(by_round[r]):
             pseudo.append(dict(g, num=offsets[lv] + j + 1))
-
     if has_attach:
-        # 1回戦を2回戦の枠に接続: 勝者名が2回戦に現れていればその側、
-        # 未確定分は「空きかつ未接続」の枠へ番号順に割当
-        first = by_round[rounds_present[0]]
-        base_sides = []      # (2回戦インデックスj, 側0/1) の一覧(枠順)
+        first = by_round[lower[0]]
+        base_sides = []
         for j, g in enumerate(base_games):
-            base_sides.append((j, 0, g["a"]))
-            base_sides.append((j, 1, g["b"]))
-        assigned = {}        # 1回戦ゲームnum → 枠index(0..)
+            base_sides.append(g["a"])
+            base_sides.append(g["b"])
         winners = {}
         for g in first:
             if _done(g):
                 winners[_winner(g)] = g["num"]
-        used = set()
-        for si, (j, side, nm) in enumerate(base_sides):
+        assigned, used = {}, set()
+        for si, nm in enumerate(base_sides):
             if nm and nm in winners:
                 assigned[winners[nm]] = si
                 used.add(si)
-        # 空き枠 = 名前が空 かつ 未接続
-        free = [si for si, (j, side, nm) in enumerate(base_sides)
-                if not nm and si not in used]
-        rest = [g["num"] for g in first if g["num"] not in assigned]
-        for num, si in zip(sorted(rest), free):
+        free = [si for si, nm in enumerate(base_sides) if not nm and si not in used]
+        rest = sorted(g["num"] for g in first if g["num"] not in assigned)
+        for num, si in zip(rest, free):
             assigned[num] = si
         for g in first:
             si = assigned.get(g["num"])
-            if si is None:
-                continue
-            pseudo.append(dict(g, num=si + 1))   # レベル0: num=枠index+1
+            if si is not None:
+                pseudo.append(dict(g, num=si + 1))
 
-    return build_pref_full({"slots": leaf_slots, "games": pseudo})
+    struct = build_pref_full({"slots": leaf_slots, "games": pseudo})
+    if struct is None:
+        return None
+    nodes = struct["nodes"]
+    lower_levels = base_level + len(lower) - bi
+    levels = lower_levels + len(UPPER_ROUNDS)   # 準々決勝〜決勝の列は常に確保
+
+    # 勝者名 → 最後に勝ったノード
+    last_win = {}
+    for n in sorted(nodes, key=lambda x: x["lv"]):
+        if _done(n):
+            last_win[_winner(n)] = n
+
+    final = None
+    seq = 0
+    for ui, r in enumerate(UPPER_ROUNDS):
+        for g in by_round.get(r, []):
+            if not (g["a"] or g["b"]):
+                continue
+            node = {"lv": lower_levels + ui, "a": g["a"], "b": g["b"],
+                    "as": g["as"], "bs": g["bs"], "round": r,
+                    "feedA": last_win.get(g["a"]) if g["a"] else None,
+                    "feedB": last_win.get(g["b"]) if g["b"] else None,
+                    "freeLeafs": [], "seq": 10000 + seq}
+            seq += 1
+            if r == "決勝":
+                node["side"] = "C"
+                final = node
+            else:
+                fa, fb = node["feedA"], node["feedB"]
+                node["side"] = (fa or fb or {}).get("side", "L")
+            nodes.append(node)
+            if _done(node):
+                last_win[_winner(node)] = node
+    return {"nodes": nodes, "final": final, "levels": levels}
 
 
 def layout(struct, rank_of=None):
@@ -282,7 +303,16 @@ def layout(struct, rank_of=None):
                                    "w": 0 if a_wins else 1}
                 center["champion"] = _winner(final)
 
+    losers = set()
+    for n in nodes:
+        if _done(n):
+            losers.add(n["b"] if int(n["as"]) > int(n["bs"]) else n["a"])
+    for t in out_teams:
+        if t["n"] in losers:
+            t["out"] = 1
+
     return {"type": "full", "W": round(W), "H": round(H), "levels": levels,
+            "nameW": NAME_W, "rowH": ROW_H,
             "teams": out_teams, "blacks": blacks, "reds": reds,
             "scores": scores, "center": center}
 
