@@ -3,7 +3,7 @@ name: live-update
 # 夏の地方大会期間(6〜8月)に毎朝1回、速報データを取り込んで再ビルド・デプロイする
 on:
   schedule:
-    - cron: "0 21 * 6-8 *"   # 21:00 UTC = 06:00 JST
+    - cron: "0 21 * 3,4,6-8 *"   # 21:00 UTC = 06:00 JST(3-4月=選抜、6-8月=選手権)
   workflow_dispatch: {}
 
 permissions:
@@ -19,6 +19,8 @@ jobs:
           python-version: "3.12"
       - name: 速報データ取り込み
         run: python tools/live_update.py
+      - name: 甲子園の試合日程を更新
+        run: python tools/koshien_schedule.py
       - name: サイト再生成
         run: python build.py
       - name: 変更があればコミット・プッシュ(pushでCloudflareが自動デプロイ)

@@ -601,6 +601,7 @@ def build_top(active):
     app = app[:fs] + map_html + TOP_FOOTER + app[fe:]
     app = add_share(add_adsense(add_canonical(app, "/")))
     app = add_bracket(app, "top")
+    app = add_live_widget(app)
 
     with open(os.path.join(ROOT, "index.html"), "w", encoding="utf-8", newline="") as f:
         f.write(app)
@@ -803,6 +804,24 @@ def add_bracket(doc, kind, slug=None):
     snippet = ("<script>window.__BRACKET__=" + payload + ";</script>"
                "<script>" + _BRACKET_JS_CACHE["js"] + "</script>")
     return doc.replace("</body>", snippet + "</body>", 1)
+
+
+# ---------------- 甲子園ライブ配信ウィジェット(トップページ) ----------------
+
+def add_live_widget(doc):
+    """試合中はライブ配信リンク、普段は次の試合日時を表示。
+    日程は data/koshien/schedule.json(tools/koshien_schedule.py が毎日更新)、
+    表示・判定ロジックは tools/live_widget.html(プレースホルダ置換で注入)"""
+    sp = os.path.join(ROOT, "data", "koshien", "schedule.json")
+    tp = os.path.join(ROOT, "tools", "live_widget.html")
+    if not os.path.exists(sp) or not os.path.exists(tp):
+        return doc
+    days = json.load(open(sp, encoding="utf-8")).get("days") or []
+    if not days:
+        return doc
+    snippet = open(tp, encoding="utf-8").read().replace(
+        "__SCHEDULE_JSON__", json.dumps(days, ensure_ascii=False, separators=(",", ":")))
+    return doc.replace("<body>", "<body>" + snippet, 1)
 
 # ---------------- sitemap ----------------
 

@@ -1,0 +1,54 @@
+# -*- coding: utf-8 -*-
+"""甲子園(全国大会)の試合日程を取得して data/koshien/schedule.json に保存する。
+
+出典: バーチャル高校野球の全国大会試合リストJSON(選抜・選手権とも開催中の大会が入る)。
+トップページの「ライブ配信」ウィジェットが参照する。毎日1回、GitHub Actionsから実行。
+"""
+import io
+import json
+import os
+import re
+import sys
+import urllib.request
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+URL = "https://www.asahicom.jp/koshien/contents/virtualbaseball/site/zenkoku_all_game_list.json"
+OUT = os.path.join(ROOT, "data", "koshien", "schedule.json")
+
+
+def main():
+    req = urllib.request.Request(URL, headers={"User-Agent": "Mozilla/5.0 (koshien-ranking.com data sync; once daily)"})
+    raw = urllib.request.urlopen(req, timeout=30).read().decode("utf-8", "replace")
+    m = re.search(r"\((.*)\)\s*;?\s*$", raw, re.S)
+    j = json.loads(m.group(1) if m else raw)
+    days = []
+    for d in j.get("data", []):
+        if d.get("all_cancel_flg"):
+            continue  # 中止日
+        date = str(d.get("game_date", ""))
+        if not re.fullmatch(r"\d{8}", date):
+            continue
+        times = []
+        for g in d.get("game_list", []):
+            t = (g.get("playball_time") or "").strip()
+            if re.fullmatch(r"\d{1,2}:\d{2}", t) and not g.get("no_game"):
+                times.append(t)
+        if times:
+            days.append({"date": date, "times": sorted(set(times), key=lambda x: (len(x), x))})
+    out = {"days": days}
+    old = None
+    if os.path.exists(OUT):
+        try:
+            old = json.load(open(OUT, encoding="utf-8"))
+        except Exception:
+            pass
+    if out != old:
+        json.dump(out, open(OUT, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
+        print(f"schedule.json 更新: {len(days)}日分")
+    else:
+        print("schedule.json 変更なし")
+
+
+if __name__ == "__main__":
+    main()

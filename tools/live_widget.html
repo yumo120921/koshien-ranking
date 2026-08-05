@@ -1,0 +1,42 @@
+<div id="koshien-live"></div>
+<style>
+#koshien-live{display:none;font-family:ui-sans-serif,system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif}
+#koshien-live.on{display:block;background:#fff;border-bottom:1px solid #e2e8f0;text-align:center;padding:8px 12px}
+@media(min-width:1560px){#koshien-live.on{position:fixed;top:130px;right:22px;width:262px;z-index:9997;
+border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:left;padding:14px 16px}}
+</style>
+<script>
+(function () {
+  var DAYS = __SCHEDULE_JSON__;
+  var el = document.getElementById("koshien-live");
+  var now = new Date(Date.now() + 9 * 3600 * 1000); // JST(UTCアクセサで読む)
+  var today = now.getUTCFullYear() * 10000 + (now.getUTCMonth() + 1) * 100 + now.getUTCDate();
+  var nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  function mins(t) { var p = t.split(":"); return +p[0] * 60 + +p[1]; }
+  var live = false, next = null;
+  for (var i = 0; i < DAYS.length; i++) {
+    var d = +DAYS[i].date, ts = DAYS[i].times.map(mins);
+    if (d === today) {
+      // 第1試合開始15分前〜最終試合開始+3時間を「試合中」とみなす
+      if (nowMin >= ts[0] - 15 && nowMin <= ts[ts.length - 1] + 180) { live = true; break; }
+      if (nowMin < ts[0] - 15 && !next) next = [DAYS[i].date, DAYS[i].times[0]];
+    } else if (d > today && !next) {
+      next = [DAYS[i].date, DAYS[i].times[0]];
+    }
+  }
+  var A = "https://vk.sportsbull.jp/koshien/";
+  if (live) {
+    el.innerHTML = '<a href="' + A + '" target="_blank" rel="noopener" style="text-decoration:none;display:block">' +
+      '<div style="font-weight:bold;color:#dc2626;font-size:15px">🔴 現在試合中！ライブ配信を見る！</div>' +
+      '<div style="color:#64748b;font-size:11px;margin-top:4px">（バーチャル高校野球のホームページに移動します。）</div></a>';
+    el.className = "on";
+  } else if (next) {
+    var mo = +next[0].substring(4, 6), dy = +next[0].substring(6, 8);
+    el.innerHTML = '<a href="' + A + '" target="_blank" rel="noopener" style="text-decoration:none;display:block">' +
+      '<div style="font-weight:bold;color:#14532d;font-size:14px">⚾ 甲子園（全国大会）</div>' +
+      '<div style="color:#1e293b;font-size:13px;margin-top:4px">次の試合は' + mo + '月' + dy + '日 ' + next[1] + '〜 です。</div>' +
+      '<div style="color:#64748b;font-size:11px;margin-top:4px">日程・速報はバーチャル高校野球へ</div></a>';
+    el.className = "on";
+  }
+})();
+</script>
