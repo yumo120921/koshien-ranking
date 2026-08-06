@@ -226,7 +226,7 @@ footer a{color:#cbd5e1;margin:0 10px;text-decoration:none}
 """
 
 FOOTER = ('<footer><nav>'
-          '<a href="/">トップ</a>|<a href="/saitama/">埼玉大会</a>|'
+          '<a href="/">トップ</a>|<a href="/column/">コラム</a>|<a href="/method">算定方法</a>|'
           '<a href="/about">サイトについて</a>|<a href="/privacy">プライバシーポリシー</a>|'
           '<a href="/disclaimer">免責事項</a>|<a href="/contact">お問い合わせ</a></nav>'
           f'<p style="margin:6px 0 0">&copy; 2026 {SITE_NAME}</p></footer>')
@@ -575,7 +575,8 @@ def japan_map_section(active):
 TOP_FOOTER = (
     f'<footer style="background:#1e293b;color:#cbd5e1;padding:24px 16px;text-align:center;'
     f'font-family:{FONT};font-size:13px;line-height:2.2"><nav>'
-    '<a href="/saitama/" style="color:#cbd5e1;margin:0 10px;text-decoration:none">埼玉大会</a>|'
+    '<a href="/column/" style="color:#cbd5e1;margin:0 10px;text-decoration:none">コラム</a>|'
+    '<a href="/method" style="color:#cbd5e1;margin:0 10px;text-decoration:none">算定方法</a>|'
     '<a href="/about" style="color:#cbd5e1;margin:0 10px;text-decoration:none">サイトについて</a>|'
     '<a href="/privacy" style="color:#cbd5e1;margin:0 10px;text-decoration:none">プライバシーポリシー</a>|'
     '<a href="/disclaimer" style="color:#cbd5e1;margin:0 10px;text-decoration:none">免責事項</a>|'
@@ -1083,7 +1084,8 @@ def build_sitemap(all_paths):
 
 def main():
     active = active_prefs()
-    paths = ["/", "/about", "/privacy", "/disclaimer", "/contact"]
+    paths = ["/", "/about", "/privacy", "/disclaimer", "/contact",
+             "/method", "/column/", "/column/strongest-schools", "/column/prefecture-power"]
     for slug in active:
         paths += build_pref(slug)
     has_koshien = build_top(active)
