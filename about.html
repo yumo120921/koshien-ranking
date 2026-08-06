@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>サイトについて | 高校野球 通算ランキング</title>
-<meta name="description" content="高校野球 通算ランキングの運営者情報とサイト概要です。">
+<meta name="description" content="高校野球 通算ランキングの運営者情報、収録データの範囲、データの出典と集計方法、ランキング算定方式の概要、更新体制について説明します。">
 <style>
 body{margin:0;font-family:ui-sans-serif,system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:#1e293b;background:#f8fafc;line-height:1.9}
 header{background:#1e293b;color:#fff;padding:16px}
@@ -17,6 +17,8 @@ footer a{color:#cbd5e1;margin:0 10px;text-decoration:none}
 table{border-collapse:collapse;width:100%}
 th,td{border:1px solid #cbd5e1;padding:8px 12px;text-align:left}
 th{background:#e2e8f0;white-space:nowrap}
+ul{padding-left:1.4em}
+.note{font-size:13px;color:#64748b}
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6908671930198074" crossorigin="anonymous"></script><link rel="canonical" href="https://koshien-ranking.com/about">
 </head>
@@ -24,7 +26,10 @@ th{background:#e2e8f0;white-space:nowrap}
 <header><a href="/">高校野球 通算ランキング</a></header>
 <main>
 <h1>サイトについて</h1>
-<p>「高校野球 通算ランキング」は、高校野球の戦績データをまとめた個人運営のデータベースサイトです。甲子園(春の選抜・夏の選手権)および各都道府県大会のベスト8以上を対象に、学校別の通算成績ランキングや年度別の結果を閲覧できます。都道府県大会は順次追加予定です。</p>
+<p>「高校野球 通算ランキング」は、高校野球の戦績データをまとめた個人運営のデータベースサイトです。甲子園(春の選抜・夏の選手権)と全国49地区の都道府県大会について、ベスト8以上の成績を100年以上さかのぼって収録し、独自のポイント方式による学校別の通算ランキング、年度別の結果、大会期間中はトーナメント表の結果速報を公開しています。</p>
+
+<h2>このサイトを作った理由</h2>
+<p>高校野球の記録は「その年の大会」単位でまとめられたものが多く、「この学校は昔から強いのか、最近強くなったのか」「うちの県で本当に強い学校はどこか」といった<b>学校単位・通算での比較</b>を横断的にできる場所がなかなかありません。単純な優勝回数の比較では、接戦を勝ち上がった学校や、強豪を破って躍進した学校の評価がこぼれ落ちてしまいます。そこで、点差や対戦相手の格まで加味した独自のランキングを作り、誰でも集計期間を変えながら眺められるようにしたのがこのサイトです。</p>
 
 <h2>サイト概要</h2>
 <table>
@@ -34,15 +39,42 @@ th{background:#e2e8f0;white-space:nowrap}
 <tr><th>開設</th><td>2026年7月</td></tr>
 </table>
 
-<h2>掲載データについて</h2>
-<p>当サイトに掲載している戦績データは、公開されている大会結果などをもとに運営者が独自に集計・整理したものです。正確な記載に努めていますが、誤りを発見された場合は<a href="./contact.html">お問い合わせ</a>よりご指摘いただけると幸いです。</p>
+<h2>収録データの範囲</h2>
+<table>
+<tr><th>甲子園(春・夏)</th><td>1915年の第1回選手権から現在まで、春・夏あわせて201大会のベスト8以上と、準々決勝以降の試合スコア約1,400試合分</td></tr>
+<tr><th>都道府県大会</th><td>全49地区(北海道は南北、東京は東西に分割)・あわせて約3,100大会のベスト8以上と、準々決勝以降の試合スコア約21,000試合分。収録開始年は地区により異なります(最古は1915年)</td></tr>
+<tr><th>収録校数</th><td>のべ約3,600校(統廃合・改名した学校を含む)</td></tr>
+</table>
+<p class="note">※ 中止となった大会(戦争による中断、2020年など)は収録していません。1977年以前の夏は1県1代表制でない年があり、当時の代表地区の区分で扱っています。</p>
+
+<h2>データの出典と集計方法</h2>
+<p>掲載データは、各大会の公式記録、地方大会の記録誌、公開されているトーナメント表・記録データベースなどの公開資料をもとに、運営者が1大会ずつ照合しながら独自に集計・整理したものです。整理にあたっては次のような処理を行っています。</p>
+<ul>
+<li><b>校名の名寄せ</b> — 統合・改名した学校(例: 光星学院→八戸学院光星、浪華商→大体大浪商)は同一校として通算成績に合算し、最新の校名で表示します。同名・類似名の別校(例: 中京大中京と中京〈岐阜〉)は別校として区別します。</li>
+<li><b>記念大会の扱い</b> — 複数代表制の年(東西・南北ブロックなど)は各ブロックを個別の大会として収録しています。</li>
+<li><b>整合検証</b> — スコアデータは「準々決勝4試合・準決勝2試合・決勝1試合の勝ち上がりが一致するか」を機械的に検証したうえで掲載しています。</li>
+</ul>
+<p>正確な記載に努めていますが、資料間の食い違いや転記誤りが残っている可能性があります。誤りを発見された場合は<a href="/contact">お問い合わせ</a>からご指摘いただけると幸いです。確認のうえ修正します。</p>
+
+<h2>ランキングの算定方法(概要)</h2>
+<p>ランキングは優勝回数の単純比較ではなく、次の4要素を合算した独自のポイント制です。</p>
+<ul>
+<li><b>到達点</b> — ベスト8・ベスト4・準優勝・優勝の到達段階に応じた基本ポイント</li>
+<li><b>点差ボーナス</b> — 準々決勝以降の試合内容(点差)への加点。大勝続きの優勝と接戦続きの優勝を区別します(1試合・1大会の上限あり)</li>
+<li><b>継続ボーナス</b> — 上位進出を続けている学校への加点</li>
+<li><b>格上撃破ボーナス</b> — その時点の順位が上の学校を破った場合の加点(順位差が大きいほど大きく加点)</li>
+</ul>
+<p>集計期間(直近5年〜全期間)を切り替えると、その期間の成績だけでランキングを再計算します。また、活動を終えた学校(閉校・統合など)は判明している時点以降のランキングから除外しています。点差係数の設計はサッカーの国際レーティングで用いられるElo方式を参考にしました。</p>
+
+<h2>更新体制</h2>
+<p>大会期間中(選抜・選手権とその地方大会)は、公開されている大会情報をもとに1日4回(6時・12時・16時・21時ごろ)自動で結果を取り込み、ランキング・トーナメント速報ページに反映しています。大会期間外のデータ修正・追加は随時行います。</p>
 
 <h2>お問い合わせ</h2>
-<p>当サイトへのご意見・ご要望・データ訂正のご連絡は、<a href="./contact.html">お問い合わせページ</a>よりお願いいたします。</p>
+<p>当サイトへのご意見・ご要望・データ訂正のご連絡は、<a href="/contact">お問い合わせページ</a>よりお願いいたします。</p>
 </main>
 <footer>
 <nav><a href="/">トップ</a>|<a href="/saitama/">埼玉大会</a>|<a href="/about">サイトについて</a>|<a href="/privacy">プライバシーポリシー</a>|<a href="/disclaimer">免責事項</a>|<a href="/contact">お問い合わせ</a></nav>
 <p style="margin:6px 0 0">&copy; 2026 高校野球 通算ランキング</p>
 </footer>
-<div id="pgbtns" style="position:fixed;bottom:14px;right:12px;z-index:9998;display:flex;flex-direction:column;gap:8px;"><button type="button" data-sv="x" aria-label="Xでポストする" title="Xでポストする" style="width:40px;height:40px;border-radius:50%;background:#000;color:#fff;border:0;cursor:pointer;font-weight:bold;font-size:18px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">X</button><button type="button" data-sv="line" aria-label="LINEで送る" title="LINEで送る" style="width:40px;height:40px;border-radius:50%;background:#06C755;color:#fff;border:0;cursor:pointer;font-weight:bold;font-size:10px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">LINE</button><button type="button" data-sv="cp" aria-label="リンクをコピー" title="リンクをコピー" style="width:40px;height:40px;border-radius:50%;background:#fff;color:#334155;border:1px solid #cbd5e1;cursor:pointer;font-size:16px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3)">&#128279;</button></div><script>(function(){var bx=document.querySelectorAll("#pgbtns button");function opn(u){window.open(u,"_blank","noopener")}for(var i=0;i<bx.length;i++){bx[i].onclick=function(){var u=encodeURIComponent(location.href),t=encodeURIComponent(document.title),k=this.getAttribute("data-sv"),b=this;if(k==="x"){opn("https://x.com/intent/tweet?text="+t+"&url="+u)}else if(k==="line"){opn("https://social-plugins.line.me/lineit/share?url="+u)}else if(navigator.clipboard){navigator.clipboard.writeText(location.href).then(function(){b.textContent="\u2713";setTimeout(function(){b.textContent="\uD83D\uDD17"},1200)})}}}})();</script></body>
+<div id="pgbtns" style="position:fixed;bottom:14px;right:12px;z-index:9998;display:flex;flex-direction:column;gap:8px;"><button type="button" data-sv="x" aria-label="Xでポストする" title="Xでポストする" style="width:40px;height:40px;border-radius:50%;background:#000;color:#fff;border:0;cursor:pointer;font-weight:bold;font-size:18px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">X</button><button type="button" data-sv="line" aria-label="LINEで送る" title="LINEで送る" style="width:40px;height:40px;border-radius:50%;background:#06C755;color:#fff;border:0;cursor:pointer;font-weight:bold;font-size:10px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3);font-family:sans-serif">LINE</button><button type="button" data-sv="cp" aria-label="リンクをコピー" title="リンクをコピー" style="width:40px;height:40px;border-radius:50%;background:#fff;color:#334155;border:1px solid #cbd5e1;cursor:pointer;font-size:16px;padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.3)">&#128279;</button></div><script>(function(){var bx=document.querySelectorAll("#pgbtns button");function opn(u){window.open(u,"_blank","noopener")}for(var i=0;i<bx.length;i++){bx[i].onclick=function(){var u=encodeURIComponent(location.href),t=encodeURIComponent(document.title),k=this.getAttribute("data-sv"),b=this;if(k==="x"){opn("https://x.com/intent/tweet?text="+t+"&url="+u)}else if(k==="line"){opn("https://social-plugins.line.me/lineit/share?url="+u)}else if(navigator.clipboard){navigator.clipboard.writeText(location.href).then(function(){b.textContent="✓";setTimeout(function(){b.textContent="🔗"},1200)})}}}})();</script></body>
 </html>

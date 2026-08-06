@@ -287,14 +287,15 @@ def add_share(doc):
 def esc(s):
     return html.escape(str(s), quote=True)
 
-def page(title, desc, canonical_path, body, nav=""):
+def page(title, desc, canonical_path, body, nav="", noindex=False):
+    robots = '\n<meta name="robots" content="noindex">' if noindex else ""
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{esc(title)}</title>
-<meta name="description" content="{esc(desc)}">
+<meta name="description" content="{esc(desc)}">{robots}
 <link rel="canonical" href="{BASE_URL}{quote(canonical_path)}">
 <style>{CSS}</style>
 {ADSENSE}
@@ -400,6 +401,9 @@ def build_pref(slug):
     rec = school_records(rows)
 
     # --- 学校別ページ ---
+    # 掲載2回以下の学校は内容が薄い(表1〜2行)ため検索インデックス対象から外す
+    # (ページ自体は生成し、サイト内リンクからは従来どおり見られる)
+    thin_schools = {sname for sname, entries in rec.items() if len(entries) <= 2}
     for sname, entries in rec.items():
         entries.sort(key=lambda e: (int(e[0]["year"]), e[0]["block"]))
         counts = {label: sum(1 for _, l in entries if l == label) for _, label in RANKS}
@@ -428,7 +432,8 @@ def build_pref(slug):
                 f"<h2>年度別成績</h2>{table}"
                 '<p class="note">※ ブロック表記(A・B、東西南北など)は、大会が複数代表制で行われた年度の各ブロックを表します。</p>')
         with open(os.path.join(outbase, "schools", f"{sname}.html"), "w", encoding="utf-8", newline="\n") as f:
-            f.write(page(f"{sname} の戦績({name}) | {SITE_NAME}", desc, school_href(sname), body, nav))
+            f.write(page(f"{sname} の戦績({name}) | {SITE_NAME}", desc, school_href(sname), body, nav,
+                         noindex=(sname in thin_schools)))
 
     # --- 学校別一覧 ---
     rk = ranking_rows(rec)
@@ -527,7 +532,7 @@ def build_pref(slug):
     tpath = build_tournament_page("pref", slug, school_names=set(rec.keys()))
     if tpath:
         paths.append(tpath)
-    paths += [school_href(n) for n in sorted(rec.keys())]
+    paths += [school_href(n) for n in sorted(rec.keys()) if n not in thin_schools]
     paths += [year_href(y) for y in years]
     print(f"  {slug}: 大会 {len(rows)} / 学校 {len(rec)} / 年度 {len(years)}")
     return paths
