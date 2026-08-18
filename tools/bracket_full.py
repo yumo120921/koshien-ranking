@@ -199,36 +199,19 @@ def build_chain_full(yg):
         side = "L" if i < best_k else "R"
         for m in ns:
             m["side"] = side
-    levels = lower_levels + len(UPPER_ROUNDS)   # 準々決勝〜決勝の列は常に確保
+    levels = lower_levels + len(UPPER_ROUNDS)   # 準々決勝〜決勝の列(組み合わせ確定前の空き中央)
 
-    # 勝者名 → 最後に勝ったノード
-    last_win = {}
-    for n in sorted(nodes, key=lambda x: x["lv"]):
-        if _done(n):
-            last_win[_winner(n)] = n
-
-    final = None
-    seq = 0
-    for ui, r in enumerate(UPPER_ROUNDS):
+    # 準々決勝以降は「3回戦から都度抽選」なので、3回戦までの木とは接続せず、
+    # 中央に8校を再掲した独立の小ヤグラとして描く(新聞のヤグラと同じ方式)。
+    # 組み合わせが入っている試合だけを収集し、layout()のcenterブロックで配置する
+    upper = []
+    for r in UPPER_ROUNDS:
         for g in by_round.get(r, []):
-            if not (g["a"] or g["b"]):
-                continue
-            node = {"lv": lower_levels + ui, "a": g["a"], "b": g["b"],
-                    "as": g["as"], "bs": g["bs"], "round": r,
-                    "feedA": last_win.get(g["a"]) if g["a"] else None,
-                    "feedB": last_win.get(g["b"]) if g["b"] else None,
-                    "freeLeafs": [], "seq": 10000 + seq}
-            seq += 1
-            if r == "決勝":
-                node["side"] = "C"
-                final = node
-            else:
-                fa, fb = node["feedA"], node["feedB"]
-                node["side"] = (fa or fb or {}).get("side", "L")
-            nodes.append(node)
-            if _done(node):
-                last_win[_winner(node)] = node
-    return {"nodes": nodes, "final": final, "levels": levels}
+            if g["a"] or g["b"]:
+                upper.append({"round": r, "a": g["a"], "b": g["b"],
+                              "as": g["as"], "bs": g["bs"]})
+    return {"nodes": nodes, "final": None, "levels": levels,
+            "lowerLevels": lower_levels, "upper": upper}
 
 
 def layout(struct, rank_of=None, row_h=None):
@@ -237,6 +220,7 @@ def layout(struct, rank_of=None, row_h=None):
     nodes = struct["nodes"]
     levels = struct["levels"]
     final = struct["final"]
+    upper = struct.get("upper") or []
 
     # 出場校(リーフ)の収集: フィードが無い側の非空チーム名
     teams = {"L": [], "R": []}
@@ -258,7 +242,12 @@ def layout(struct, rank_of=None, row_h=None):
 
     rows = max(len(teams["L"]), len(teams["R"]), 1)
     H = TOP_PAD + rows * row_h + BOTTOM_PAD
-    W = 2 * (NAME_W + COL_W * levels) + CENTER_GAP
+    center_gap = CENTER_GAP
+    if upper:
+        # 中央ヤグラを描くので、外側の列は勝者スタブ1列分だけ確保して中央を広げる
+        levels = struct["lowerLevels"] + 1
+        center_gap = 480
+    W = 2 * (NAME_W + COL_W * levels) + center_gap
     XC = W / 2
 
     def col_x(side, lv):
@@ -311,7 +300,7 @@ def layout(struct, rank_of=None, row_h=None):
             wtop = int(n["as"]) > int(n["bs"])
             wx, wy = (ax, ay) if wtop else (bx, by)
             nxt = col_x(side, n["lv"] + 1) if n["lv"] + 1 < levels else \
-                (XC - CENTER_GAP / 2 if side == "L" else XC + CENTER_GAP / 2)
+                (XC - center_gap / 2 if side == "L" else XC + center_gap / 2)
             reds.append({"d": f"M{round(wx, 1)} {round(wy, 1)} L{jx} {round(wy, 1)} "
                               f"L{jx} {round(jy, 1)} L{round(nxt, 1)} {round(jy, 1)}",
                          "lv": n["lv"]})
@@ -348,16 +337,161 @@ def layout(struct, rank_of=None, row_h=None):
                                    "w": 1 if win else 0, "an": an, "lv": final["lv"]})
                 center["champion"] = _winner(final)
 
+    labels = []
+    if upper:
+        by_r = {}
+        for g in upper:
+            by_r.setdefault(g["round"], []).append(g)
+        qf = by_r.get("準々決勝", [])
+        sf = by_r.get("準決勝", [])
+        fi = (by_r.get("決勝") or [None])[0]
+
+        def _win_or_none(g):
+            return _winner(g) if (g is not None and _done(g)) else None
+
+        # 決勝のa/b→左右の準決勝、準決勝のa/b→左右の準々決勝(勝者名で対応付け)
+        qf_by_w = {w: g for g in qf for w in [_win_or_none(g)] if w}
+        sf_by_w = {w: g for g in sf for w in [_win_or_none(g)] if w}
+        sfL = sfR = None
+        if fi is not None and (fi["a"] or fi["b"]):
+            sfL, sfR = sf_by_w.get(fi["a"]), sf_by_w.get(fi["b"])
+        rest = [g for g in sf if g is not sfL and g is not sfR]
+        sfL = sfL or (rest.pop(0) if rest else None)
+        sfR = sfR or (rest.pop(0) if rest else None)
+
+        def _qf_pair(sfg):
+            pair = []
+            if sfg is not None:
+                for wch in ("a", "b"):
+                    g = qf_by_w.get(sfg[wch]) if sfg[wch] else None
+                    if g is not None and not any(g is x for x in pair):
+                        pair.append(g)
+            return pair
+        qfL, qfR = _qf_pair(sfL), _qf_pair(sfR)
+        used = {id(g) for g in qfL + qfR}
+        remaining = [g for g in qf if id(g) not in used]
+        while len(qfL) < 2 and remaining:
+            qfL.append(remaining.pop(0))
+        while len(qfR) < 2 and remaining:
+            qfR.append(remaining.pop(0))
+
+        rh_c = 34
+        mid = TOP_PAD + rows * row_h / 2
+        top = mid - 4 * rh_c + rh_c / 2
+        QX, SX, LX, NX = 64, 32, 92, 96
+        lv_q, lv_s, lv_f = levels, levels + 1, levels + 2
+
+        def block_side(games, sgn, cs):
+            """QF2試合ぶんの校名・線・得点を配置し、各試合の接続点を返す"""
+            juncs = []
+            for gi, g in enumerate(games):
+                ya = top + (gi * 2) * rh_c
+                yb = ya + rh_c
+                for nm, y in ((g["a"], ya), (g["b"], yb)):
+                    if nm:
+                        out_teams.append({"n": nm, "x": round(XC + sgn * NX, 1), "y": y,
+                                          "an": "end" if sgn < 0 else "start",
+                                          "c": 1, "cs": cs})
+                lx, jx = XC + sgn * LX, XC + sgn * QX
+                blacks.append({"d": seg(lx, ya, jx, ya), "lv": lv_q})
+                blacks.append({"d": seg(lx, yb, jx, yb), "lv": lv_q})
+                blacks.append({"d": seg(jx, ya, jx, yb), "lv": lv_q})
+                jy = (ya + yb) / 2
+                jnc = {"jx": jx, "jy": jy, "w": None}
+                if _done(g):
+                    wtop = int(g["as"]) > int(g["bs"])
+                    wy = ya if wtop else yb
+                    nxt = XC + sgn * SX
+                    reds.append({"d": f"M{round(lx, 1)} {round(wy, 1)} L{round(jx, 1)} {round(wy, 1)} "
+                                      f"L{round(jx, 1)} {round(jy, 1)} L{round(nxt, 1)} {round(jy, 1)}",
+                                 "lv": lv_q})
+                    jnc["w"] = _winner(g)
+                    for val, win, fy in ((int(g["as"]), wtop, ya), (int(g["bs"]), not wtop, yb)):
+                        scores.append({"x": round(jx - 3 if sgn < 0 else jx + 3, 1),
+                                       "y": round(fy - 4, 1), "v": val,
+                                       "w": 1 if win else 0,
+                                       "an": "end" if sgn < 0 else "start", "lv": lv_q})
+                juncs.append(jnc)
+            return juncs
+
+        def sf_side(sfg, juncs, sgn):
+            """準決勝1試合: QF接続点2つを結ぶ。接続点を返す"""
+            if sfg is None or not juncs:
+                return None
+            byw = {j["w"]: j for j in juncs if j["w"]}
+            pts = []
+            for wch in ("a", "b"):
+                pts.append(byw.get(sfg[wch]) if sfg[wch] else None)
+            rem = [j for j in juncs if not any(j is p for p in pts)]
+            pts = [p if p is not None else (rem.pop(0) if rem else None) for p in pts]
+            pts = [p for p in pts if p is not None]
+            if not pts:
+                return None
+            jx = XC + sgn * SX
+            for pt in pts:
+                blacks.append({"d": seg(pt["jx"], pt["jy"], jx, pt["jy"]), "lv": lv_s})
+            if len(pts) == 2:
+                blacks.append({"d": seg(jx, pts[0]["jy"], jx, pts[1]["jy"]), "lv": lv_s})
+            jy = sum(pt["jy"] for pt in pts) / len(pts)
+            jnc = {"jx": jx, "jy": jy, "w": None}
+            if _done(sfg) and len(pts) == 2:
+                wname = _winner(sfg)
+                wp = byw.get(wname) or pts[0]
+                reds.append({"d": f"M{round(wp['jx'], 1)} {round(wp['jy'], 1)} L{round(jx, 1)} {round(wp['jy'], 1)} "
+                                  f"L{round(jx, 1)} {round(jy, 1)} L{round(XC, 1)} {round(jy, 1)}",
+                             "lv": lv_s})
+                jnc["w"] = wname
+                for val, win, pt in ((int(sfg["as"]), wname == sfg["a"], pts[0]),
+                                     (int(sfg["bs"]), wname == sfg["b"], pts[1])):
+                    scores.append({"x": round(jx - 3 if sgn < 0 else jx + 3, 1),
+                                   "y": round(pt["jy"] - 4, 1), "v": val,
+                                   "w": 1 if win else 0,
+                                   "an": "end" if sgn < 0 else "start", "lv": lv_s})
+            return jnc
+
+        juncsL = block_side(qfL, -1, "L")
+        juncsR = block_side(qfR, +1, "R")
+        jL = sf_side(sfL, juncsL, -1)
+        jR = sf_side(sfR, juncsR, +1)
+        pole_top = top - 40
+        center = {"x": XC, "cy": round(mid, 1), "poleTop": round(pole_top, 1)}
+        if qfL or qfR:
+            labels.append({"x": round(XC - QX, 1), "y": round(top - 14, 1), "t": "準々決勝"})
+            labels.append({"x": round(XC + QX, 1), "y": round(top - 14, 1), "t": "準々決勝"})
+        if jL is not None and jR is not None:
+            blacks.append({"d": seg(jL["jx"], jL["jy"], XC, jL["jy"]), "lv": lv_f})
+            blacks.append({"d": seg(jR["jx"], jR["jy"], XC, jR["jy"]), "lv": lv_f})
+            if abs(jL["jy"] - jR["jy"]) > 0.5:
+                blacks.append({"d": seg(XC, jL["jy"], XC, jR["jy"]), "lv": lv_f})
+            blacks.append({"d": seg(XC, min(jL["jy"], jR["jy"]), XC, pole_top), "lv": lv_f})
+            if fi is not None and _done(fi):
+                wname = _winner(fi)
+                pa = jL if jL.get("w") == fi["a"] else (jR if jR.get("w") == fi["a"] else jL)
+                pb = jR if pa is jL else jL
+                wp = pa if wname == fi["a"] else pb
+                reds.append({"d": f"M{round(wp['jx'], 1)} {round(wp['jy'], 1)} L{round(XC, 1)} {round(wp['jy'], 1)} "
+                                  f"L{round(XC, 1)} {round(pole_top, 1)}", "lv": lv_f})
+                for val, win, pt in ((int(fi["as"]), wname == fi["a"], pa),
+                                     (int(fi["bs"]), wname == fi["b"], pb)):
+                    scores.append({"x": round(XC - 4 if pt["jx"] < XC else XC + 4, 1),
+                                   "y": round(pt["jy"] - 4, 1), "v": val,
+                                   "w": 1 if win else 0,
+                                   "an": "end" if pt["jx"] < XC else "start", "lv": lv_f})
+                center["champion"] = wname
+
     losers = set()
     for n in nodes:
         if _done(n):
             losers.add(n["b"] if int(n["as"]) > int(n["bs"]) else n["a"])
+    for g in upper:
+        if _done(g):
+            losers.add(g["b"] if int(g["as"]) > int(g["bs"]) else g["a"])
     for t in out_teams:
-        if t["n"] in losers:
+        if t["n"] in losers and not t.get("c"):
             t["out"] = 1
 
     return {"type": "full", "W": round(W), "H": round(H), "levels": levels,
-            "nameW": NAME_W, "rowH": row_h,
+            "nameW": NAME_W, "rowH": row_h, "labels": labels,
             "teams": out_teams, "blacks": blacks, "reds": reds,
             "scores": scores, "center": center}
 

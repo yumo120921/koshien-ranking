@@ -862,7 +862,8 @@ def _bracket_json(kind, slug=None):
                 if not yyear:
                     dates = [g.get("date", "") for g in yg["games"] if g.get("date")]
                     yyear = int(max(dates)[:4]) if dates else None
-                nteam = yg.get("team_count") or len(full["teams"])
+                # 中央(準々決勝以降)の再掲エントリは出場校数に数えない
+                nteam = yg.get("team_count") or sum(1 for te in full["teams"] if not te.get("c"))
                 if kind == "pref":
                     full["title"] = f"{yyear}年 選手権{PREF_NAME[slug]}大会(全{nteam}校)"
                     lbl = f"{yyear}年(全{nteam}校)"
@@ -877,6 +878,8 @@ def _bracket_json(kind, slug=None):
                     # 夏は「都道府県大会優勝=甲子園出場」なので所属県の優勝年基準で数える。
                     # 春(選抜)は選考制のため、当サイト収録(ベスト8以上)基準にフォールバック
                     for te in full["teams"]:
+                        if te.get("c"):   # 中央(準々決勝以降)の再掲は校名のみ
+                            continue
                         csrc = _cross_source_for(te["n"], pref_of_yagura.get(te["n"]) or pref_of.get(te["n"], ""))
                         if season == "夏" and csrc is not None:
                             te["app"] = csrc.appearance_as_champion(te["n"], yyear)

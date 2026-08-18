@@ -166,11 +166,12 @@
     function renderFull() {
       var stagger = REDUCED ? 0 : Math.min(8, 700 / Math.max(1, T.teams.length));
       T.teams.forEach(function (t, i) {
-        var isL = t.an === "start";
+        var isL = t.cs ? t.cs === "L" : t.an === "start";
         var g = el("g", { "class": "bteam " + (isL ? "bL" : "bR") }, svg);
         g.style.animationDelay = (REDUCED ? 0 : (i % (T.teams.length / 2 | 0)) * stagger / 1000) + "s";
         var txt = el("text", { x: t.x, y: t.y + 4, "text-anchor": t.an, "font-size": 12,
           "font-weight": "bold", fill: "#0f172a", "font-family": "sans-serif" }, g);
+        if (t.c) { txt.textContent = t.n; txt.setAttribute("font-size", 11.5); return; }
         var r0 = rankShort(t.n, String(B.defaultWindow));
         if (t.app) {
           // 甲子園: 校名の下に「総合〇位/県〇位/〇年ぶり〇回目」を1行で
@@ -192,12 +193,19 @@
           else { txt.appendChild(rs); txt.appendChild(nm); }
         }
       });
+      (T.labels || []).forEach(function (l) {
+        el("text", { x: l.x, y: l.y, "text-anchor": "middle", "font-size": 10,
+          fill: SUB, "font-family": "sans-serif" }, svg).textContent = l.t;
+      });
       var T_TEAM = REDUCED ? 0 : 750;
       var D_LV = 240, GAP_LV = 60;
+      var maxBLv = 0, maxRLv = 0;
+      T.blacks.forEach(function (b) { if (b.lv > maxBLv) maxBLv = b.lv; });
+      T.reds.forEach(function (r) { if (r.lv > maxRLv) maxRLv = r.lv; });
       T.blacks.forEach(function (b) {
         animatePath(drawPath(b.d, BLACK, 1.6), D_LV, T_TEAM + b.lv * (D_LV + GAP_LV));
       });
-      var T_RED = T_TEAM + T.levels * (D_LV + GAP_LV) + 200;
+      var T_RED = T_TEAM + (maxBLv + 1) * (D_LV + GAP_LV) + 200;
       var R_LV = 300, RGAP = 80;
       T.reds.forEach(function (r) {
         animatePath(drawPath(r.d, RED, 2.6), R_LV, T_RED + r.lv * (R_LV + RGAP));
@@ -228,7 +236,7 @@
           var champG = el("g", { opacity: 0 }, svg);
           el("text", { x: C.x, y: (C.poleTop || 50) - 8, "text-anchor": "middle", "font-size": 15, fill: RED, "font-family": "sans-serif", "font-weight": "bold" }, champG)
             .textContent = "🏆 " + C.champion + " 優勝";
-          var TF = T_RED + T.levels * (R_LV + RGAP) + 150;
+          var TF = T_RED + (maxRLv + 1) * (R_LV + RGAP) + 150;
           setTimeout(function () { champG.setAttribute("opacity", 1); }, REDUCED ? 0 : TF);
         }
       }
