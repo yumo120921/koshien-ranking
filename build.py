@@ -336,6 +336,102 @@ def ranking_rows(rec):
 
 # ---------------- 都道府県セクション生成 ----------------
 
+def _school_lead(sname, entries, counts, tournament, latest_year):
+    """学校別ページの冒頭解説文(である調)。データから機械的に組み立てる。
+    entriesは(行, 成績ラベル)のリスト(年昇順)"""
+    e = esc(sname)
+    yrs = sorted({int(x[0]["year"]) for x in entries})
+    first, last, total = yrs[0], yrs[-1], len(entries)
+    ch, ru = counts["優勝"], counts["準優勝"]
+    if total == 1:
+        r, label = entries[0]
+        lead = f"{e}は、{r['year']}年の{tournament}で{label}に進出した。"
+        if label == "優勝" and r["ws"]:
+            lead += f"決勝では{esc(r['ru'])}を{esc(r['ws'])}-{esc(r['ls'])}で下している。"
+        return lead
+    if ch >= 8:
+        head = f"{e}は、{tournament}で優勝{ch}回・準優勝{ru}回を数える屈指の強豪である。"
+    elif ch >= 1:
+        head = (f"{e}は、{tournament}でこれまでに{ch}回の優勝"
+                + (f"(ほかに準優勝{ru}回)" if ru else "") + "を果たしている。")
+    elif ru >= 1:
+        head = (f"{e}は、{tournament}で優勝こそまだないものの、"
+                f"準優勝{ru}回を含むベスト8以上{total}回の実績を持つ。")
+    else:
+        head = f"{e}は、{tournament}でベスト8以上に{total}回進出している。"
+    span = last - first
+    if span > 0:
+        mid = f"初めて上位に進出したのは{first}年で、以降{span}年の間にベスト8以上{total}回を数える。"
+    else:
+        mid = f"上位進出はいずれも{first}年のものである。"
+    titles = [x for x in entries if x[1] == "優勝"]
+    if titles:
+        r = titles[-1][0]
+        tail = f"直近の優勝は{r['year']}年"
+        if r["ws"]:
+            tail += f"で、決勝で{esc(r['ru'])}を{esc(r['ws'])}-{esc(r['ls'])}で破った。"
+        else:
+            tail += "である。"
+    else:
+        r, label = entries[-1]
+        tail = f"直近の上位進出は{r['year']}年({label})である。"
+    ys = set(yrs)
+    run = 0
+    while latest_year - run in ys:
+        run += 1
+    streak = ""
+    if run >= 3:
+        streak = f"{latest_year - run + 1}年からは{run}年連続でベスト8以上に進出中である。"
+    return head + mid + tail + streak
+
+
+def _year_lead(y, yrows, tournament, champ_hist):
+    """年度別ページの冒頭解説文(である調)。champ_hist: 校名→優勝年のリスト"""
+    yi = int(y)
+    out = []
+    multi = len(yrows) > 1
+    if multi:
+        out.append(f"{y}年の{tournament}はブロック制(複数代表)で行われた。")
+    for r in yrows:
+        chn = r["ch"]
+        hist = champ_hist.get(chn, [])
+        hs = set(hist)
+        n = sum(1 for cy in hist if cy <= yi)
+        run = 0
+        while yi - run in hs:
+            run += 1
+        prev = [cy for cy in hist if cy < yi]
+        if n <= 1:
+            ph = "初優勝"
+        elif run >= 2:
+            ph = f"{run}年連続{n}回目の優勝"
+        else:
+            ph = f"{yi - prev[-1]}年ぶり{n}回目の優勝"
+        if multi:
+            sc = (f"(決勝 {esc(r['ws'])}-{esc(r['ls'])} {esc(r['ru'])})" if r["ws"]
+                  else (f"(決勝の相手は{esc(r['ru'])})" if r["ru"] else ""))
+            out.append(f"{r['block']}ブロックは{esc(chn)}が{ph}{sc}。")
+            continue
+        out.append(f"{y}年の{tournament}は、{esc(chn)}が{ph}を飾った大会である。")
+        d = None
+        if r["ws"] and r["ls"]:
+            try:
+                d = abs(int(r["ws"]) - int(r["ls"]))
+            except ValueError:
+                d = None
+        if d is not None and d <= 2:
+            out.append(f"決勝は{esc(r['ws'])}-{esc(r['ls'])}の接戦の末、{esc(r['ru'])}を退けた。")
+        elif d is not None and d >= 7:
+            out.append(f"決勝は{esc(r['ws'])}-{esc(r['ls'])}と大差で{esc(r['ru'])}を下した。")
+        elif d is not None:
+            out.append(f"決勝では{esc(r['ru'])}を{esc(r['ws'])}-{esc(r['ls'])}で下した。")
+        elif r["ru"]:
+            out.append(f"決勝では{esc(r['ru'])}を破った。")
+        if r["b4"]:
+            out.append("ベスト4には" + "、".join(esc(x) for x in r["b4"]) + "が入った。")
+    return "".join(out)
+
+
 def build_pref(slug):
     name = PREF_NAME[slug]
     tournament = f"夏の高校野球 {name}大会"
@@ -399,6 +495,12 @@ def build_pref(slug):
         f.write(app)
 
     rec = school_records(rows)
+    latest_year = max(int(r0["year"]) for r0 in rows)
+    champ_hist = {}
+    for r0 in rows:
+        if r0["ch"]:
+            champ_hist.setdefault(r0["ch"], set()).add(int(r0["year"]))
+    champ_hist = {k: sorted(v) for k, v in champ_hist.items()}
 
     # --- 学校別ページ ---
     # 掲載2回以下の学校は内容が薄い(表1〜2行)ため検索インデックス対象から外す
@@ -426,8 +528,7 @@ def build_pref(slug):
         desc = (f"{sname}の{tournament}戦績。{('、'.join(bits))}"
                 f"(ベスト8以上{len(entries)}回、{first}年〜{last}年)。年度別の成績一覧。")
         body = (f"<h1>{esc(sname)} の戦績({name})</h1>"
-                f"<p>{esc(sname)}の{tournament}におけるベスト8以上の成績一覧です"
-                f"(初出は{first}年、直近は{last}年)。</p>"
+                f"<p>{_school_lead(sname, entries, counts, tournament, latest_year)}</p>"
                 f'<div class="cards">{cards}</div>'
                 f"<h2>年度別成績</h2>{table}"
                 '<p class="note">※ ブロック表記(A・B、東西南北など)は、大会が複数代表制で行われた年度の各ブロックを表します。</p>')
@@ -504,7 +605,7 @@ def build_pref(slug):
             note = ('<p class="note">※ この年度は大会がブロック制(複数代表)で行われたため、'
                     'ブロックごとに掲載しています。</p>')
         body = (f"<h1>{y}年 {tournament} の結果</h1>"
-                f"<p>{y}年の{tournament}のベスト8以上の結果です。優勝は{esc('、'.join(champs))}。</p>"
+                f"<p>{_year_lead(y, yrows, tournament, champ_hist)}</p>"
                 + note + "".join(sections) + pager)
         desc = f"{y}年{tournament}の結果。優勝{('、'.join(champs))}。ベスト8以上の成績と準々決勝以降のスコア。"
         with open(os.path.join(outbase, "years", f"{y}.html"), "w", encoding="utf-8", newline="\n") as f:

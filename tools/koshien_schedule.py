@@ -94,6 +94,76 @@ def fetch_zenkoku_yagura():
         print("koshien/yagura.json 変更なし")
 
 
+def upsert_koshien_results():
+    """決勝まで終了した全国大会の成績を data/koshien/results.csv と scores.json に反映する。
+    トップページ(春夏総合ランキング)の集計は results.csv が源泉のため、
+    これが無いと当年の甲子園がランキングに反映されない"""
+    ypath = os.path.join(ROOT, "data", "koshien", "yagura.json")
+    if not os.path.exists(ypath):
+        return
+    yg = json.load(open(ypath, encoding="utf-8"))
+    games = yg.get("games") or []
+
+    def _done(g):
+        return (g.get("a") and g.get("b") and str(g.get("as", "")).isdigit()
+                and str(g.get("bs", "")).isdigit() and int(g["as"]) != int(g["bs"]))
+
+    qf = sorted((g for g in games if g["round"] == "準々決勝"), key=lambda g: g["num"])
+    sf = sorted((g for g in games if g["round"] == "準決勝"), key=lambda g: g["num"])
+    fi = [g for g in games if g["round"] == "決勝"]
+    if len(qf) != 4 or len(sf) != 2 or len(fi) != 1 or not all(map(_done, qf + sf + fi)):
+        print("koshien/results.csv: 大会未了のため追記なし")
+        return
+    fi = fi[0]
+    dates = [str(g.get("date", "")) for g in games if re.fullmatch(r"\d{8}", str(g.get("date", "")))]
+    if not dates:
+        return
+    year = max(dates)[:4]
+    season = "春" if max(int(d[4:6]) for d in dates) <= 5 else "夏"
+
+    def _win(g):
+        return ("a", "b") if int(g["as"]) > int(g["bs"]) else ("b", "a")
+
+    def _label(g, side):
+        name, pref = g[side], g.get(side + "p", "")
+        return f"{name}({pref})" if pref else name
+
+    w, l = _win(fi)
+    ch, ru = _label(fi, w), _label(fi, l)
+    ws, ls = (fi["as"], fi["bs"]) if w == "a" else (fi["bs"], fi["as"])
+    b4 = [_label(g, _win(g)[1]) for g in sf]
+    b8 = [_label(g, _win(g)[1]) for g in qf]
+    line = ",".join([year, season, ch, ru] + b4 + b8 + [str(ws), str(ls)])
+
+    cpath = os.path.join(ROOT, "data", "koshien", "results.csv")
+    lines = open(cpath, encoding="utf-8").read().rstrip("\n").split("\n")
+    prefix = f"{year},{season},"
+    hit = [i for i, x in enumerate(lines) if x.startswith(prefix)]
+    if hit:
+        if lines[hit[0]] == line:
+            print(f"koshien/results.csv: {year}{season} 変更なし")
+        else:
+            lines[hit[0]] = line
+            print(f"koshien/results.csv: {year}{season} を更新")
+    else:
+        lines.append(line)
+        print(f"koshien/results.csv: {year}{season} を追記 (優勝 {ch})")
+    open(cpath, "w", encoding="utf-8", newline="\n").write("\n".join(lines) + "\n")
+
+    spath = os.path.join(ROOT, "data", "koshien", "scores.json")
+    scores = json.load(open(spath, encoding="utf-8")) if os.path.exists(spath) else {}
+    ent = {"qf": [{"a": g["a"], "as": g["as"], "b": g["b"], "bs": g["bs"]} for g in qf],
+           "sf": [{"a": g["a"], "as": g["as"], "b": g["b"], "bs": g["bs"]} for g in sf],
+           "f": {"a": fi["a"], "as": fi["as"], "b": fi["b"], "bs": fi["bs"]}}
+    key = f"{year}|{season}"
+    if scores.get(key) != ent:
+        scores[key] = ent
+        json.dump(scores, open(spath, "w", encoding="utf-8", newline="\n"),
+                  ensure_ascii=False, indent=1)
+        print(f"koshien/scores.json: {key} を更新")
+
+
 if __name__ == "__main__":
     main()
     fetch_zenkoku_yagura()
+    upsert_koshien_results()
